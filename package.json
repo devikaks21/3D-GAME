@@ -1,0 +1,16 @@
+{
+  "name": "open-road-3d",
+  "version": "1.0.0",
+  "description": "OPEN ROAD 3D - Open-World Driving Simulator",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "three": "^0.182.0"
+  },
+  "keywords": ["threejs", "game", "driving-simulator", "webgl"],
+  "author": "",
+  "license": "MIT"
+}

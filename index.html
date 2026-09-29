@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>OPEN ROAD 3D | Open-World Driving Simulator</title>
+  <meta name="description" content="A next-generation 3D open-world driving simulator featuring high-performance vehicles, open city, mountain pass, racing circuit, airport drag strip and stunt playground.">
+  <link rel="stylesheet" href="./style.css?v=5">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏎️</text></svg>">
+
+  <!-- Three.js ES Module Import Map -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "/node_modules/three/build/three.module.js"
+      }
+    }
+  </script>
+</head>
+<body>
+  <!-- 3D WebGL Canvas Layer -->
+  <div id="game-container"></div>
+
+  <!-- User Interface Layer -->
+  <div id="ui-container"></div>
+
+  <!-- Game Bootstrap -->
+  <script type="module" src="./src/main.js?v=5"></script>
+</body>
+</html>
