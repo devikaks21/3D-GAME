@@ -673,4 +673,77 @@ export class AudioManager {
       this.sfxGain.gain.setValueAtTime(val * 0.7, this.ctx.currentTime);
     }
   }
+
+  playWiperSound() {
+    if (!this.initialized || !this.ctx || this.muted) return;
+    try {
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      const filter = this.ctx.createBiquadFilter();
+
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(140, now);
+      osc.frequency.exponentialRampToValueAtTime(70, now + 0.18);
+
+      filter.type = 'bandpass';
+      filter.frequency.setValueAtTime(320, now);
+      filter.Q.setValueAtTime(2.0, now);
+
+      gain.gain.setValueAtTime(0.09, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+
+      osc.connect(filter);
+      filter.connect(gain);
+      gain.connect(this.sfxGain || this.masterGain);
+
+      osc.start(now);
+      osc.stop(now + 0.18);
+    } catch (_) {}
+  }
+
+  setRainAudio(isRaining, volume = 0.5) {
+    if (!this.initialized || !this.ctx) return;
+    try {
+      if (!this.rainNode) {
+        // Procedural pink/white noise rain loop
+        const bufferSize = this.ctx.sampleRate * 2;
+        const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+        const output = buffer.getChannelData(0);
+        let b0 = 0, b1 = 0, b2 = 0;
+        for (let i = 0; i < bufferSize; i++) {
+          const white = Math.random() * 2 - 1;
+          b0 = 0.99886 * b0 + white * 0.0555179;
+          b1 = 0.99332 * b1 + white * 0.0750759;
+          b2 = 0.96900 * b2 + white * 0.1538520;
+          output[i] = (b0 + b1 + b2 + white * 0.1) * 0.2;
+        }
+
+        const whiteNoise = this.ctx.createBufferSource();
+        whiteNoise.buffer = buffer;
+        whiteNoise.loop = true;
+
+        const rainFilter = this.ctx.createBiquadFilter();
+        rainFilter.type = 'lowpass';
+        rainFilter.frequency.setValueAtTime(1400, this.ctx.currentTime);
+
+        const rainGain = this.ctx.createGain();
+        rainGain.gain.setValueAtTime(0, this.ctx.currentTime);
+
+        whiteNoise.connect(rainFilter);
+        rainFilter.connect(rainGain);
+        rainGain.connect(this.ambientGain || this.masterGain);
+
+        whiteNoise.start(0);
+
+        this.rainNode = whiteNoise;
+        this.rainGain = rainGain;
+      }
+
+      if (this.rainGain) {
+        const targetGain = isRaining ? Math.max(0, Math.min(1, volume)) * 0.45 : 0;
+        this.rainGain.gain.setTargetAtTime(targetGain, this.ctx.currentTime, 0.4);
+      }
+    } catch (_) {}
+  }
 }

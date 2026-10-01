@@ -40,6 +40,7 @@ export class TrafficManager {
     this.despawnRadius = 230; // Despawn distant vehicles to preserve performance
 
     this.spawnCooldown = 0;
+    this.isNight = false;
   }
 
   setDensity(density, playerPosition = null) {
@@ -128,6 +129,9 @@ export class TrafficManager {
 
       if (!tooCloseToCar) {
         const car = new AICar(this.scene, this.roadNetwork, wp.id);
+        if (this.isNight && typeof car.setNightMode === 'function') {
+          car.setNightMode(true);
+        }
         this.cars.push(car);
         return true;
       }
@@ -188,5 +192,14 @@ export class TrafficManager {
       this.cars[i].destroy();
     }
     this.cars = [];
+  }
+
+  setNightMode(isNight) {
+    this.isNight = !!isNight;
+    for (let i = 0; i < this.cars.length; i++) {
+      if (typeof this.cars[i].setNightMode === 'function') {
+        this.cars[i].setNightMode(this.isNight);
+      }
+    }
   }
 }

@@ -16,6 +16,13 @@ export class City {
     this.lightCycleTimer = 0;
     this.trafficLightState = 'green';
 
+    this.streetlightPools = [];
+    this.streetlightGlowMat = new THREE.MeshBasicMaterial({
+      color: 0x332a1e,
+      transparent: true,
+      opacity: 0.2
+    });
+
     this.buildCity();
     this.scene.add(this.group);
   }
@@ -24,24 +31,27 @@ export class City {
     const roadTexture = this.assetManager.getRoadTexture();
     const buildingTexture = this.assetManager.getBuildingFacadeTexture();
 
-    const roadMat = new THREE.MeshStandardMaterial({
+    this.roadMat = new THREE.MeshStandardMaterial({
       map: roadTexture,
       roughness: 0.8,
       metalness: 0.1
     });
+    const roadMat = this.roadMat;
 
     const sidewalkMat = new THREE.MeshStandardMaterial({
       color: 0x3a3d42,
       roughness: 0.9
     });
 
-    const buildingMat = new THREE.MeshStandardMaterial({
+    this.buildingMat = new THREE.MeshStandardMaterial({
       map: buildingTexture,
+      emissiveMap: buildingTexture,
+      emissive: new THREE.Color(0xffeedd),
+      emissiveIntensity: 0.05,
       roughness: 0.4,
-      metalness: 0.6,
-      emissive: 0x223344,
-      emissiveIntensity: 0.2
+      metalness: 0.6
     });
+    const buildingMat = this.buildingMat;
 
     const shopMat = new THREE.MeshStandardMaterial({ color: 0x1f242d, roughness: 0.6 });
     const glassMat = new THREE.MeshPhysicalMaterial({ color: 0x67e8f9, transmission: 0.8, transparent: true, opacity: 0.5 });
@@ -187,10 +197,24 @@ export class City {
       lampHead.position.set(0, 3.75, 0.5);
       pole.add(lampHead);
 
-      const glow = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 1.0), new THREE.MeshBasicMaterial({ color: 0xfff4d0 }));
+      const glow = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 1.0), this.streetlightGlowMat);
       glow.rotation.x = Math.PI / 2;
       glow.position.set(0, 3.65, 0.5);
       pole.add(glow);
+
+      const poolGeom = new THREE.CircleGeometry(5.0, 16);
+      const poolMat = new THREE.MeshBasicMaterial({
+        color: 0xffe299,
+        transparent: true,
+        opacity: 0.0,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+      });
+      const pool = new THREE.Mesh(poolGeom, poolMat);
+      pool.rotation.x = -Math.PI / 2;
+      pool.position.set(x + c.dx, 0.03, z + c.dz + 0.5);
+      this.group.add(pool);
+      this.streetlightPools.push(pool);
 
       this.group.add(pole);
       if (this.collisionSystem) {
@@ -249,6 +273,28 @@ export class City {
         tl.yellowMat.color.setHex(this.trafficLightState === 'yellow' ? 0xffbb00 : 0x221100);
         tl.greenMat.color.setHex(this.trafficLightState === 'green' ? 0x00ff55 : 0x002208);
       });
+    }
+  }
+
+  setStreetlights(glowIntensity, isNight) {
+    if (this.streetlightGlowMat) {
+      if (isNight || glowIntensity > 0.15) {
+        this.streetlightGlowMat.color.setHex(0xfff2cc);
+        this.streetlightGlowMat.opacity = Math.max(0.3, Math.min(1.0, glowIntensity * 1.2));
+      } else {
+        this.streetlightGlowMat.color.setHex(0x332a1e);
+        this.streetlightGlowMat.opacity = 0.2;
+      }
+    }
+    const poolOpacity = isNight ? Math.min(0.24, glowIntensity * 0.24) : 0;
+    this.streetlightPools.forEach(p => {
+      if (p.material) p.material.opacity = poolOpacity;
+    });
+  }
+
+  setBuildingWindowGlow(intensity) {
+    if (this.buildingMat) {
+      this.buildingMat.emissiveIntensity = Math.max(0.02, Math.min(1.0, intensity));
     }
   }
 }

@@ -50,8 +50,9 @@ export class GameState {
       transmission: 'auto', // 'auto' | 'manual'
       cameraView: 'chase',
       speedUnit: 'KM/H', // 'KM/H' | 'MPH'
-      timeOfDay: 'day', // 'day', 'sunset', 'night'
-      trafficDensity: 'medium' // 'low', 'medium', 'high'
+      timeOfDay: 'day', // 'morning', 'day', 'evening', 'night', 'dynamic'
+      weather: 'clear', // 'clear', 'cloudy', 'rain'
+      trafficDensity: 'medium' // 'off', 'low', 'medium', 'high'
     };
 
     this.listeners = new Map();

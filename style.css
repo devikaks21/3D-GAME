@@ -5570,6 +5570,67 @@ body, html {
   box-shadow: 0 0 12px rgba(255, 30, 66, 0.3);
 }
 
+/* ==========================================================================
+   DYNAMIC DAY/NIGHT & ATMOSPHERIC WEATHER SYSTEM STYLES
+   ========================================================================== */
+
+/* HUD Environment Status Pill */
+.hud-env-pill {
+  background: linear-gradient(135deg, rgba(16, 24, 38, 0.85) 0%, rgba(8, 12, 20, 0.95) 100%) !important;
+  border: 1px solid rgba(0, 229, 255, 0.35) !important;
+  color: #e0f2fe !important;
+  font-family: var(--font-tech, 'Rajdhani', sans-serif);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  gap: 6px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4), inset 0 0 10px rgba(0, 229, 255, 0.05);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.hud-env-pill:hover {
+  border-color: #00e5ff !important;
+  color: #ffffff !important;
+  box-shadow: 0 0 18px rgba(0, 229, 255, 0.4);
+  transform: translateY(-1px);
+}
+
+.hud-env-pill #hud-env-icon {
+  font-size: 13px;
+  display: inline-block;
+  transition: transform 0.3s ease;
+}
+
+.hud-env-pill:hover #hud-env-icon {
+  transform: scale(1.2) rotate(10deg);
+}
+
+/* Screen-space Rain Droplets & Wiper Clearing Canvas */
+#screen-rain-canvas {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+  z-index: 40;
+  display: none;
+  opacity: 0.88;
+  mix-blend-mode: overlay;
+  transition: opacity 0.5s ease;
+}
+
+/* Wiper chip active styling */
+#btn-ctrl-wipers:hover {
+  border-color: #00e5ff;
+}
+
+#hud-wiper-label {
+  font-weight: 800;
+  transition: color 0.2s ease;
+}
+
+
 
 
 

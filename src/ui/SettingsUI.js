@@ -11,7 +11,8 @@ export class SettingsUI {
     onTrafficDensityChanged = null,
     onGraphicsChanged = null,
     onDrivingAssistanceChanged = null,
-    onReturn = null
+    onReturn = null,
+    onWeatherChanged = null
   ) {
     this.container = container;
     this.gameState = gameState;
@@ -22,6 +23,7 @@ export class SettingsUI {
     this.onGraphicsChanged = onGraphicsChanged;
     this.onDrivingAssistanceChanged = onDrivingAssistanceChanged;
     this.onReturn = onReturn;
+    this.onWeatherChanged = onWeatherChanged;
 
     this.root = null;
     this.activeTab = 'graphics'; // 'graphics' | 'audio' | 'gameplay' | 'controls'
@@ -238,9 +240,21 @@ export class SettingsUI {
               <div class="setting-item">
                 <label class="setting-label">TIME OF DAY LIGHTING</label>
                 <div class="segmented-control" id="ctrl-timeofday">
-                  <button class="seg-btn active" data-val="day">DAY</button>
-                  <button class="seg-btn" data-val="sunset">SUNSET</button>
-                  <button class="seg-btn" data-val="night">NIGHT</button>
+                  <button class="seg-btn" data-val="morning">MORNING 🌅</button>
+                  <button class="seg-btn active" data-val="day">DAY ☀️</button>
+                  <button class="seg-btn" data-val="evening">EVENING 🌇</button>
+                  <button class="seg-btn" data-val="night">NIGHT 🌙</button>
+                  <button class="seg-btn" data-val="dynamic">DYNAMIC ⏳</button>
+                </div>
+              </div>
+
+              <!-- Atmospheric weather -->
+              <div class="setting-item">
+                <label class="setting-label">ATMOSPHERIC WEATHER</label>
+                <div class="segmented-control" id="ctrl-weather">
+                  <button class="seg-btn active" data-val="clear">CLEAR ☀️</button>
+                  <button class="seg-btn" data-val="cloudy">CLOUDY ☁️</button>
+                  <button class="seg-btn" data-val="rain">RAIN 🌧️</button>
                 </div>
               </div>
             </div>
@@ -611,6 +625,14 @@ export class SettingsUI {
       if (this.onTimeOfDayChanged) {
         this.onTimeOfDayChanged(val);
       }
+      this.showToast(`Time of Day set to <strong>${val.toUpperCase()}</strong>`, 'info', 2000);
+    });
+
+    setupSegmented('ctrl-weather', 'weather', (val) => {
+      if (this.onWeatherChanged) {
+        this.onWeatherChanged(val);
+      }
+      this.showToast(`Atmospheric weather set to <strong>${val.toUpperCase()}</strong>`, 'info', 2000);
     });
   }
 
@@ -644,7 +666,8 @@ export class SettingsUI {
     setSegmentedActive('ctrl-driving-assist', s.drivingAssistance);
     setSegmentedActive('ctrl-transmission', s.transmission);
     setSegmentedActive('ctrl-speedunit', s.speedUnit);
-    setSegmentedActive('ctrl-timeofday', s.timeOfDay);
+    setSegmentedActive('ctrl-timeofday', s.timeOfDay || 'day');
+    setSegmentedActive('ctrl-weather', s.weather || 'clear');
 
     const setSliderVal = (sliderId, labelId, val) => {
       if (val === undefined || val === null) return;

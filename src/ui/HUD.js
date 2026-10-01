@@ -148,6 +148,9 @@ export class HUD {
         </div>
 
         <div class="hud-quick-actions">
+          <button class="hud-pill-btn hud-env-pill" id="hud-env-btn" title="Click: Cycle Time | Shift+Click: Cycle Weather">
+            <span id="hud-env-icon">☀️</span> <span id="hud-env-text">12:00 PM • DAY | CLEAR</span>
+          </button>
           <button class="hud-pill-btn" id="hud-touch-btn">TOUCH</button>
           <button class="hud-pill-btn" id="hud-stats-btn">STATS [V]</button>
           <button class="hud-pill-btn" id="hud-cam-btn">CAM: <span id="hud-cam-name">CHASE</span> [C]</button>
@@ -228,7 +231,7 @@ export class HUD {
           <button class="hud-aux-chip" id="btn-ctrl-trunk" title="Toggle Boot [U]"><span>[U]</span> BOOT</button>
           <button class="hud-aux-chip" id="btn-ctrl-roof" title="Toggle Roof [T]"><span>[T]</span> ROOF</button>
           <button class="hud-aux-chip" id="btn-ctrl-gear" title="Cycle Gear [G]"><span>[G]</span> GEAR</button>
-          <button class="hud-aux-chip" id="btn-ctrl-wipers" title="Toggle Wipers [X]"><span>[X]</span> WIPERS</button>
+          <button class="hud-aux-chip" id="btn-ctrl-wipers" title="Toggle Wipers [X]"><span>[X]</span> WIPERS: <span id="hud-wiper-label">OFF</span></button>
           <button class="hud-aux-chip" id="btn-ctrl-reset" title="Reset Vehicle to Road [R]"><span>[R]</span> RESET</button>
           <button class="hud-aux-chip" id="hud-pause-btn" title="Pause / Menu [ESC]"><span>[ESC]</span> MENU</button>
         </div>
@@ -433,6 +436,29 @@ export class HUD {
     });
 
     // Modern Digital Dashboard click triggers
+    const envBtn = this.root.querySelector('#hud-env-btn');
+    if (envBtn) {
+      envBtn.addEventListener('click', (e) => {
+        const envSys = window.game?.environmentSystem;
+        if (!envSys) return;
+        if (e.shiftKey) {
+          // Cycle weather: clear -> cloudy -> rain -> clear
+          const weathers = ['clear', 'cloudy', 'rain'];
+          const nextWeather = weathers[(weathers.indexOf(envSys.currentWeather) + 1) % weathers.length];
+          envSys.setWeather(nextWeather);
+          this.setPrompt(`ATMOSPHERE • WEATHER: ${nextWeather.toUpperCase()}`);
+        } else {
+          // Cycle time: morning -> day -> evening -> night -> dynamic
+          const times = ['morning', 'day', 'evening', 'night', 'dynamic'];
+          const nextTime = times[(times.indexOf(envSys.currentTimeOfDay) + 1) % times.length];
+          envSys.setTimeOfDay(nextTime);
+          this.setPrompt(`ENVIRONMENT • TIME: ${nextTime.toUpperCase()}`);
+        }
+        if (this.audio?.playUIClick) this.audio.playUIClick();
+        setTimeout(() => this.setPrompt(''), 2200);
+      });
+    }
+
     if (this.driveModeBadge) {
       this.driveModeBadge.addEventListener('click', () => {
         this.input.triggerAction('sportMode');
@@ -766,6 +792,33 @@ export class HUD {
     if (this.handbrakeIcon) {
       this.handbrakeIcon.classList.toggle('active-red', !!telemetry.handbrake);
       this.handbrakeIcon.textContent = telemetry.handbrake ? (telemetry.speedKmh > 5 ? 'DRIFT' : 'PARK') : 'PARK';
+    }
+
+    // Live Windshield Wiper status
+    const wiperLabel = this.root.querySelector('#hud-wiper-label');
+    if (wiperLabel) {
+      wiperLabel.textContent = telemetry.wipers ? 'ON' : 'OFF';
+      wiperLabel.style.color = telemetry.wipers ? '#00e5ff' : '';
+    }
+
+    // Dynamic Time & Atmospheric Weather Telemetry
+    const envSys = window.game?.environmentSystem;
+    if (envSys) {
+      const envText = this.root.querySelector('#hud-env-text');
+      const envIcon = this.root.querySelector('#hud-env-icon');
+      if (envText && envIcon) {
+        const timeOfDay = String(envSys.currentTimeOfDay || envSys.timeMode || 'day').toUpperCase();
+        const weather = String(envSys.currentWeather || envSys.weatherMode || 'clear').toUpperCase();
+        const clockTime = typeof envSys.getFormattedTime === 'function' ? envSys.getFormattedTime() : (envSys.getTimeTelemetry?.().timeFormatted || '12:00 PM');
+        let icon = '☀️';
+        if (timeOfDay.includes('MORNING')) icon = '🌅';
+        else if (timeOfDay.includes('EVENING') || timeOfDay.includes('SUNSET')) icon = '🌇';
+        else if (timeOfDay.includes('NIGHT')) icon = '🌙';
+        if (weather.includes('RAIN')) icon = '🌧️';
+        else if (weather.includes('CLOUDY')) icon = '☁️';
+        envIcon.textContent = icon;
+        envText.textContent = `${clockTime} • ${timeOfDay} | ${weather}`;
+      }
     }
 
     // 4. Camera Mode

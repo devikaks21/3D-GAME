@@ -1758,6 +1758,32 @@ export class Vehicle {
     this.chassisGroup.add(hlMeshL, hlMeshR);
     this.headlightMeshes = [hlMeshL, hlMeshR];
 
+    // Forward illuminated ground beam for vivid night road projection
+    const beamGeom = new THREE.PlaneGeometry(6.5, 38);
+    const beamCanvas = document.createElement('canvas');
+    beamCanvas.width = 128;
+    beamCanvas.height = 256;
+    const bctx = beamCanvas.getContext('2d');
+    const bgrad = bctx.createRadialGradient(64, 256, 4, 64, 140, 130);
+    bgrad.addColorStop(0, 'rgba(255, 255, 235, 0.45)');
+    bgrad.addColorStop(0.35, 'rgba(240, 248, 255, 0.28)');
+    bgrad.addColorStop(1, 'rgba(200, 220, 255, 0)');
+    bctx.fillStyle = bgrad;
+    bctx.fillRect(0, 0, 128, 256);
+    const beamTex = new THREE.CanvasTexture(beamCanvas);
+    const beamMat = new THREE.MeshBasicMaterial({
+      map: beamTex,
+      transparent: true,
+      opacity: 0,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      side: THREE.DoubleSide
+    });
+    this.groundBeam = new THREE.Mesh(beamGeom, beamMat);
+    this.groundBeam.rotation.x = -Math.PI / 2;
+    this.groundBeam.position.set(0, 0.06, 20);
+    this.chassisGroup.add(this.groundBeam);
+
     // Taillights / Brake lights
     const tlGeom = new THREE.BoxGeometry(0.28, 0.08, 0.05);
     const tlMeshL = new THREE.Mesh(tlGeom, this.materials.taillightGlow);
@@ -2354,6 +2380,7 @@ export class Vehicle {
     this.lights.headlights = this.headlightsOn;
     this.headlights.forEach(h => h.intensity = this.headlightsOn ? 120 : 0);
     this.materials.headlightGlow.color.setHex(this.headlightsOn ? 0xffffff : 0x445566);
+    if (this.groundBeam) this.groundBeam.material.opacity = this.headlightsOn ? 0.65 : 0;
     return this.headlightsOn;
   }
 
@@ -2362,6 +2389,7 @@ export class Vehicle {
     this.lights.headlights = this.headlightsOn;
     this.headlights.forEach(h => h.intensity = this.headlightsOn ? 120 : 0);
     this.materials.headlightGlow.color.setHex(this.headlightsOn ? 0xffffff : 0x445566);
+    if (this.groundBeam) this.groundBeam.material.opacity = this.headlightsOn ? 0.65 : 0;
     return this.headlightsOn;
   }
 

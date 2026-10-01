@@ -29,6 +29,7 @@ import { Airport } from '../world/Airport.js';
 import { RacingTrack } from '../world/RacingTrack.js';
 import { Playground } from '../world/Playground.js';
 import { TrafficManager } from '../world/TrafficManager.js';
+import { EnvironmentSystem } from '../world/EnvironmentSystem.js';
 
 // User Interface Layers
 import { MainMenu } from '../ui/MainMenu.js';
@@ -58,10 +59,11 @@ export class Game {
     this.camera = null;
     this.renderer = null;
 
-    // Environmental lighting
+    // Environmental lighting & Atmosphere
     this.sunLight = null;
     this.ambientLight = null;
     this.hemiLight = null;
+    this.environmentSystem = null;
 
     // Entities
     this.vehicleManager = null;
@@ -191,43 +193,32 @@ export class Game {
     this.sunLight.shadow.camera.bottom = -100;
     this.sunLight.shadow.bias = -0.0005;
     this.scene.add(this.sunLight);
+
+    // Dynamic Time & Atmospheric Weather System
+    this.environmentSystem = new EnvironmentSystem(
+      this.scene,
+      this.sunLight,
+      this.ambientLight,
+      this.hemiLight,
+      this.audioManager
+    );
   }
 
   setTimeOfDay(timeOfDay) {
-    switch (timeOfDay) {
-      case 'sunset':
-        this.scene.background.set(0x2d1720);
-        this.scene.fog.color.set(0x2d1720);
-        this.sunLight.color.set(0xff7733);
-        this.sunLight.intensity = 1.2;
-        this.sunLight.position.set(160, 40, 90);
-        this.ambientLight.color.set(0xffaa77);
-        this.ambientLight.intensity = 0.4;
-        break;
+    if (this.gameState?.settings) {
+      this.gameState.settings.timeOfDay = timeOfDay;
+    }
+    if (this.environmentSystem) {
+      this.environmentSystem.setTimeOfDay(timeOfDay);
+    }
+  }
 
-      case 'night':
-        this.scene.background.set(0x050608);
-        this.scene.fog.color.set(0x050608);
-        this.sunLight.color.set(0x224466);
-        this.sunLight.intensity = 0.2;
-        this.ambientLight.color.set(0x112233);
-        this.ambientLight.intensity = 0.25;
-        if (this.vehicleManager && this.vehicleManager.getActiveVehicle()) {
-          const v = this.vehicleManager.getActiveVehicle();
-          if (!v.headlightsOn) v.toggleHeadlights();
-        }
-        break;
-
-      case 'day':
-      default:
-        this.scene.background.set(0x090b10);
-        this.scene.fog.color.set(0x090b10);
-        this.sunLight.color.set(0xfffaf0);
-        this.sunLight.intensity = 1.4;
-        this.sunLight.position.set(120, 160, 90);
-        this.ambientLight.color.set(0xffffff);
-        this.ambientLight.intensity = 0.45;
-        break;
+  setWeather(weather) {
+    if (this.gameState?.settings) {
+      this.gameState.settings.weather = weather;
+    }
+    if (this.environmentSystem) {
+      this.environmentSystem.setWeather(weather);
     }
   }
 
@@ -338,11 +329,25 @@ export class Game {
     if (this.collisionSystem && this.trafficManager.roadNetwork) {
       this.collisionSystem.setRoadNetwork(this.trafficManager.roadNetwork);
     }
+
+    // 15. Connect World & Traffic to Environment System
+    if (this.environmentSystem) {
+      this.environmentSystem.setCity(this.city);
+      this.environmentSystem.setTrafficManager(this.trafficManager);
+      if (this.city?.roadMat) this.environmentSystem.registerRoadMaterial(this.city.roadMat);
+      if (this.racingTrack?.trackMat) this.environmentSystem.registerRoadMaterial(this.racingTrack.trackMat);
+      if (this.parkingLot?.lotMat) this.environmentSystem.registerRoadMaterial(this.parkingLot.lotMat);
+      if (this.ringRoad?.roadMat) this.environmentSystem.registerRoadMaterial(this.ringRoad.roadMat);
+    }
   }
 
   initVehicle() {
     this.vehicleManager = new VehicleManager(this.scene, this.audioManager, this.inputManager);
     this.vehicleManager.spawnVehicle(this.gameState.selectedVehicleId, 0, 0.4, 0, 0);
+
+    if (this.environmentSystem) {
+      this.environmentSystem.setVehicleManager(this.vehicleManager);
+    }
 
     this.missionManager = new MissionManager(this.scene, this.gameState, this.audioManager, this.collisionSystem);
   }
@@ -488,7 +493,8 @@ export class Game {
         } else {
           this.gameState.setState(GameStates.PAUSED);
         }
-      }
+      },
+      (weather) => this.setWeather(weather)
     );
 
     this.pitStopUI = new PitStopUI(
@@ -830,8 +836,6 @@ export class Game {
 
       // Sunlight shadows follow vehicle
       if (this.sunLight && currentPhysics) {
-        this.sunLight.position.x = currentPhysics.position.x + 120;
-        this.sunLight.position.z = currentPhysics.position.z + 90;
         this.sunLight.target.position.copy(currentPhysics.position);
       }
     } else if (this.gameState.currentState === GameStates.MENU || this.gameState.currentState === GameStates.GARAGE) {
@@ -843,6 +847,12 @@ export class Game {
     if (activeVehicle && this.mirrorSystem) {
       this.mirrorSystem.attachToVehicle(activeVehicle);
       this.mirrorSystem.update(activeVehicle, dt);
+    }
+
+    // Dynamic Time of Day & Atmospheric Weather System update
+    if (this.environmentSystem) {
+      const playerPos = currentPhysics ? currentPhysics.position : (activeVehicle ? activeVehicle.position : (this.camera ? this.camera.position : new THREE.Vector3()));
+      this.environmentSystem.update(dt, playerPos, this.camera, activeVehicle);
     }
 
     // Camera update

@@ -593,4 +593,13 @@ export class AICar {
       }
     });
   }
+
+  setNightMode(isNight) {
+    if (this.headlights && this.headlights.length > 0) {
+      const col = isNight ? 0xffffff : 0x555555;
+      this.headlights.forEach(hl => {
+        if (hl.material) hl.material.color.setHex(col);
+      });
+    }
+  }
 }
