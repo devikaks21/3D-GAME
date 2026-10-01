@@ -148,6 +148,9 @@ export class HUD {
         </div>
 
         <div class="hud-quick-actions">
+          <button class="hud-pill-btn hud-theme-pill" id="hud-theme-btn" title="Toggle Light / Dark UI Theme">
+            <span id="hud-theme-icon">☀️</span> <span id="hud-theme-text">LIGHT</span>
+          </button>
           <button class="hud-pill-btn hud-env-pill" id="hud-env-btn" title="Click: Cycle Time | Shift+Click: Cycle Weather">
             <span id="hud-env-icon">☀️</span> <span id="hud-env-text">12:00 PM • DAY | CLEAR</span>
           </button>
@@ -436,6 +439,22 @@ export class HUD {
     });
 
     // Modern Digital Dashboard click triggers
+    const themeBtn = this.root.querySelector('#hud-theme-btn');
+    if (themeBtn) {
+      themeBtn.addEventListener('click', () => {
+        const isCurrentlyLight = document.body.classList.contains('theme-light');
+        const nextTheme = isCurrentlyLight ? 'dark' : 'light';
+        if (window.game && typeof window.game.setTheme === 'function') {
+          window.game.setTheme(nextTheme);
+        } else {
+          document.body.classList.toggle('theme-light', nextTheme === 'light');
+        }
+        if (this.audio?.playUIClick) this.audio.playUIClick();
+        this.setPrompt(`VISUAL THEME • ${nextTheme.toUpperCase()} MODE ACTIVE ☀️`);
+        setTimeout(() => this.setPrompt(''), 2000);
+      });
+    }
+
     const envBtn = this.root.querySelector('#hud-env-btn');
     if (envBtn) {
       envBtn.addEventListener('click', (e) => {
@@ -819,6 +838,15 @@ export class HUD {
         envIcon.textContent = icon;
         envText.textContent = `${clockTime} • ${timeOfDay} | ${weather}`;
       }
+    }
+
+    // Live Visual Theme pill status
+    const themeIcon = this.root.querySelector('#hud-theme-icon');
+    const themeText = this.root.querySelector('#hud-theme-text');
+    if (themeIcon && themeText) {
+      const isLight = document.body.classList.contains('theme-light');
+      themeIcon.textContent = isLight ? '☀️' : '🌙';
+      themeText.textContent = isLight ? 'LIGHT' : 'DARK';
     }
 
     // 4. Camera Mode

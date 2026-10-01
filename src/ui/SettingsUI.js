@@ -257,6 +257,15 @@ export class SettingsUI {
                   <button class="seg-btn" data-val="rain">RAIN 🌧️</button>
                 </div>
               </div>
+
+              <!-- Visual Theme Mode -->
+              <div class="setting-item">
+                <label class="setting-label">VISUAL THEME MODE</label>
+                <div class="segmented-control" id="ctrl-theme">
+                  <button class="seg-btn active" data-val="light">LIGHT ☀️</button>
+                  <button class="seg-btn" data-val="dark">DARK 🌙</button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -634,6 +643,15 @@ export class SettingsUI {
       }
       this.showToast(`Atmospheric weather set to <strong>${val.toUpperCase()}</strong>`, 'info', 2000);
     });
+
+    setupSegmented('ctrl-theme', 'theme', (val) => {
+      if (window.game && typeof window.game.setTheme === 'function') {
+        window.game.setTheme(val);
+      } else {
+        document.body.classList.toggle('theme-light', val === 'light');
+      }
+      this.showToast(`Visual Theme set to <strong>${val.toUpperCase()} MODE</strong>`, 'info', 2000);
+    });
   }
 
   getGraphicsSettings() {
@@ -668,6 +686,9 @@ export class SettingsUI {
     setSegmentedActive('ctrl-speedunit', s.speedUnit);
     setSegmentedActive('ctrl-timeofday', s.timeOfDay || 'day');
     setSegmentedActive('ctrl-weather', s.weather || 'clear');
+
+    const activeTheme = (typeof localStorage !== 'undefined' && localStorage.getItem('openroad_theme')) || s.theme || 'light';
+    setSegmentedActive('ctrl-theme', activeTheme);
 
     const setSliderVal = (sliderId, labelId, val) => {
       if (val === undefined || val === null) return;

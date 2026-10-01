@@ -118,6 +118,10 @@ export class Game {
     this.initUI();
     this.setupStateHandling();
 
+    // Initialize Light/Dark theme (defaulting to Light)
+    const savedTheme = (typeof localStorage !== 'undefined' && localStorage.getItem('openroad_theme')) || this.gameState.settings.theme || 'light';
+    this.setTheme(savedTheme);
+
     // Start directly in active driving simulator mode with speedometer visible
     this.startPlayMode(GameModes.FREE_DRIVE);
 
@@ -139,8 +143,9 @@ export class Game {
 
   initThree() {
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x090b10);
-    this.scene.fog = new THREE.FogExp2(0x090b10, 0.0022);
+    // Default radiant daylight sky and atmosphere
+    this.scene.background = new THREE.Color(0x78bbf5);
+    this.scene.fog = new THREE.FogExp2(0x8ec8f8, 0.0011);
 
     this.camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 1500);
 
@@ -153,11 +158,26 @@ export class Game {
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.05;
+    this.renderer.toneMappingExposure = 1.08;
 
     this.container.appendChild(this.renderer.domElement);
     this.cameraManager = new CameraManager(this.camera, this.renderer.domElement, this.inputManager);
     this.mirrorSystem = new MirrorSystem(this.renderer, this.scene);
+  }
+
+  setTheme(theme) {
+    const t = theme === 'dark' ? 'dark' : 'light';
+    if (this.gameState?.settings) this.gameState.settings.theme = t;
+    if (t === 'light') {
+      document.body.classList.add('theme-light');
+      document.body.removeAttribute('data-theme');
+    } else {
+      document.body.classList.remove('theme-light');
+      document.body.setAttribute('data-theme', 'dark');
+    }
+    try {
+      localStorage.setItem('openroad_theme', t);
+    } catch (e) {}
   }
 
   onWindowResize() {

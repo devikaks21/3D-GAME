@@ -12,15 +12,15 @@ export const TIME_PRESETS = {
     id: 'morning',
     name: 'MORNING',
     hour: 7.5,
-    sunPosition: new THREE.Vector3(180, 50, -80),
-    sunColor: 0xffb366,
-    sunIntensity: 1.25,
-    ambientColor: 0xffe4cc,
-    ambientIntensity: 0.42,
-    hemiSky: 0xdda066,
-    hemiGround: 0x222233,
-    fogColor: 0x1f1b26,
-    fogDensity: 0.0018,
+    sunPosition: new THREE.Vector3(180, 55, -80),
+    sunColor: 0xffd5a0,
+    sunIntensity: 1.4,
+    ambientColor: 0xfff2e5,
+    ambientIntensity: 0.58,
+    hemiSky: 0xffcda0,
+    hemiGround: 0x445566,
+    fogColor: 0xf5dbbf,
+    fogDensity: 0.0011,
     windowGlow: 0.12,
     streetlightGlow: 0.0,
     isNight: false
@@ -29,16 +29,16 @@ export const TIME_PRESETS = {
     id: 'day',
     name: 'DAY',
     hour: 12.0,
-    sunPosition: new THREE.Vector3(120, 180, 90),
-    sunColor: 0xfffaf0,
-    sunIntensity: 1.45,
+    sunPosition: new THREE.Vector3(120, 190, 90),
+    sunColor: 0xfffaea,
+    sunIntensity: 1.6,
     ambientColor: 0xffffff,
-    ambientIntensity: 0.48,
-    hemiSky: 0x7090b0,
-    hemiGround: 0x22262c,
-    fogColor: 0x090b10,
-    fogDensity: 0.0015,
-    windowGlow: 0.04,
+    ambientIntensity: 0.65,
+    hemiSky: 0x78bbf5,
+    hemiGround: 0x556655,
+    fogColor: 0x8ec8f8,
+    fogDensity: 0.0010,
+    windowGlow: 0.0,
     streetlightGlow: 0.0,
     isNight: false
   },
@@ -47,14 +47,14 @@ export const TIME_PRESETS = {
     name: 'EVENING',
     hour: 18.5,
     sunPosition: new THREE.Vector3(180, 35, 120),
-    sunColor: 0xff5511,
-    sunIntensity: 1.3,
-    ambientColor: 0xff8855,
-    ambientIntensity: 0.38,
-    hemiSky: 0xbb4422,
-    hemiGround: 0x181822,
-    fogColor: 0x2d1720,
-    fogDensity: 0.002,
+    sunColor: 0xff6622,
+    sunIntensity: 1.35,
+    ambientColor: 0xff9977,
+    ambientIntensity: 0.45,
+    hemiSky: 0xdd6633,
+    hemiGround: 0x222233,
+    fogColor: 0xd9825b,
+    fogDensity: 0.0016,
     windowGlow: 0.6,
     streetlightGlow: 0.85,
     isNight: true
@@ -65,12 +65,12 @@ export const TIME_PRESETS = {
     hour: 0.0,
     sunPosition: new THREE.Vector3(-100, 140, -120),
     sunColor: 0x3366aa, // Cool moonlight
-    sunIntensity: 0.32,
-    ambientColor: 0x0a1424,
-    ambientIntensity: 0.22,
-    hemiSky: 0x152540,
+    sunIntensity: 0.35,
+    ambientColor: 0x0c1526,
+    ambientIntensity: 0.24,
+    hemiSky: 0x162644,
     hemiGround: 0x050a12,
-    fogColor: 0x040609,
+    fogColor: 0x050914,
     fogDensity: 0.0022,
     windowGlow: 0.95,
     streetlightGlow: 1.0,
@@ -127,14 +127,14 @@ export class EnvironmentSystem {
     this.cycleHour = 12.0; // 0 - 24
     this.cycleSpeed = 0.5; // in-game hours per real second (1 hour every 2s)
 
-    // Current interpolated lighting values
-    this.currentSunPos = new THREE.Vector3(120, 180, 90);
-    this.currentSunColor = new THREE.Color(0xfffaf0);
-    this.currentSunIntensity = 1.45;
+    // Current interpolated lighting values (Default: Bright Clear Daylight)
+    this.currentSunPos = new THREE.Vector3(120, 190, 90);
+    this.currentSunColor = new THREE.Color(0xfffaea);
+    this.currentSunIntensity = 1.6;
     this.currentAmbientColor = new THREE.Color(0xffffff);
-    this.currentAmbientIntensity = 0.48;
-    this.currentFogColor = new THREE.Color(0x090b10);
-    this.currentFogDensity = 0.0016;
+    this.currentAmbientIntensity = 0.65;
+    this.currentFogColor = new THREE.Color(0x8ec8f8);
+    this.currentFogDensity = 0.0010;
     this.currentWindowGlow = 0.0;
     this.currentStreetlightGlow = 0.0;
     this.isNight = false;
@@ -450,6 +450,14 @@ export class EnvironmentSystem {
     if (this.ambientLight) {
       this.ambientLight.color.copy(this.currentAmbientColor);
       this.ambientLight.intensity = this.currentAmbientIntensity;
+    }
+
+    if (this.hemiLight && target.hemiSky) {
+      const targetSky = target.hemiSky instanceof THREE.Color ? target.hemiSky : new THREE.Color(target.hemiSky);
+      const targetGround = target.hemiGround instanceof THREE.Color ? target.hemiGround : new THREE.Color(target.hemiGround);
+      this.hemiLight.color.lerp(targetSky, lerpRate);
+      this.hemiLight.groundColor.lerp(targetGround, lerpRate);
+      this.hemiLight.intensity = this.currentAmbientIntensity * 0.95;
     }
 
     if (this.scene) {

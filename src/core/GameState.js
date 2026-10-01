@@ -52,6 +52,7 @@ export class GameState {
       speedUnit: 'KM/H', // 'KM/H' | 'MPH'
       timeOfDay: 'day', // 'morning', 'day', 'evening', 'night', 'dynamic'
       weather: 'clear', // 'clear', 'cloudy', 'rain'
+      theme: 'light', // 'light' | 'dark'
       trafficDensity: 'medium' // 'off', 'low', 'medium', 'high'
     };
 
