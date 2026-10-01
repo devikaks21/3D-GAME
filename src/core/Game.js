@@ -6,6 +6,7 @@ import { AssetManager } from './AssetManager.js';
 import { CollisionSystem } from '../utilities/Collision.js';
 import { VehicleManager, VEHICLE_CATALOG } from '../vehicle/VehicleManager.js';
 import { CameraManager, CameraModes } from '../camera/CameraManager.js';
+import { MirrorSystem } from '../camera/MirrorSystem.js';
 import { NavigationSystem } from '../navigation/NavigationSystem.js';
 import { MissionManager } from '../missions/MissionManager.js';
 
@@ -38,6 +39,7 @@ import { MapUI } from '../ui/MapUI.js';
 import { MissionUI } from '../ui/MissionUI.js';
 import { SettingsUI } from '../ui/SettingsUI.js';
 import { PitStopUI } from '../ui/PitStopUI.js';
+import { DrivingSchoolUI } from '../ui/DrivingSchoolUI.js';
 
 export class Game {
   constructor() {
@@ -64,6 +66,7 @@ export class Game {
     // Entities
     this.vehicleManager = null;
     this.cameraManager = null;
+    this.mirrorSystem = null;
     this.navigationSystem = null;
     this.missionManager = null;
 
@@ -152,6 +155,7 @@ export class Game {
 
     this.container.appendChild(this.renderer.domElement);
     this.cameraManager = new CameraManager(this.camera, this.renderer.domElement, this.inputManager);
+    this.mirrorSystem = new MirrorSystem(this.renderer, this.scene);
   }
 
   onWindowResize() {
@@ -227,6 +231,64 @@ export class Game {
     }
   }
 
+  applyGraphicsSettings(settings) {
+    if (!settings) return;
+    const s = settings;
+
+    // 1. Shadows
+    if (s.shadows === 'off') {
+      this.renderer.shadowMap.enabled = false;
+      if (this.sunLight) this.sunLight.castShadow = false;
+    } else {
+      this.renderer.shadowMap.enabled = true;
+      if (this.sunLight) {
+        this.sunLight.castShadow = true;
+        const mapSize = s.shadows === 'high' ? 4096 : (s.shadows === 'low' ? 1024 : 2048);
+        this.sunLight.shadow.mapSize.width = mapSize;
+        this.sunLight.shadow.mapSize.height = mapSize;
+        if (this.sunLight.shadow.map) {
+          this.sunLight.shadow.map.dispose();
+          this.sunLight.shadow.map = null;
+        }
+      }
+    }
+    this.renderer.shadowMap.needsUpdate = true;
+
+    // 2. Reflections
+    if (this.mirrorSystem) {
+      this.mirrorSystem.enabled = (s.reflections !== 'off');
+    }
+
+    // 3. View Distance
+    const distance = parseInt(s.viewDistance, 10) || 1500;
+    if (this.camera) {
+      this.camera.far = distance;
+      this.camera.updateProjectionMatrix();
+    }
+    if (this.scene && this.scene.fog) {
+      this.scene.fog.far = distance;
+      this.scene.fog.near = Math.max(50, distance * 0.4);
+    }
+
+    // 4. Quality & Anti-aliasing pixel ratio scaling
+    let qualityRatio = 1.0;
+    if (s.graphicsQuality === 'low') qualityRatio = 0.8;
+    else if (s.graphicsQuality === 'medium') qualityRatio = 1.0;
+    else if (s.graphicsQuality === 'high') qualityRatio = Math.min(window.devicePixelRatio, 1.5);
+    else if (s.graphicsQuality === 'ultra') qualityRatio = Math.min(window.devicePixelRatio, 2.0);
+
+    if (s.antiAliasing === 'off') {
+      qualityRatio = Math.min(qualityRatio, 1.0);
+    } else if (s.antiAliasing === 'msaa4x' || s.antiAliasing === 'ultra') {
+      qualityRatio = Math.min(window.devicePixelRatio, 2.0);
+    }
+
+    if (this.renderer) {
+      this.renderer.setPixelRatio(qualityRatio);
+      this.renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+  }
+
   initWorld() {
     // 1. Downtown City
     this.city = new City(this.scene, this.assetManager, this.collisionSystem);
@@ -272,7 +334,10 @@ export class Game {
     this.playground = new Playground(this.scene, this.assetManager, this.collisionSystem);
 
     // 14. Autonomous AI Traffic System
-    this.trafficManager = new TrafficManager(this.scene);
+    this.trafficManager = new TrafficManager(this.scene, this.gameState.settings.trafficDensity || 'medium');
+    if (this.collisionSystem && this.trafficManager.roadNetwork) {
+      this.collisionSystem.setRoadNetwork(this.trafficManager.roadNetwork);
+    }
   }
 
   initVehicle() {
@@ -283,11 +348,45 @@ export class Game {
   }
 
   initUI() {
+    this.drivingSchoolUI = new DrivingSchoolUI(
+      this.uiContainer,
+      this.audioManager,
+      (selectedSubMode) => {
+        let mode = GameModes.DRIVING_SCHOOL;
+        if (selectedSubMode === 'ROAD_TEST') mode = GameModes.ROAD_TEST;
+        else if (selectedSubMode === 'COURSE_TEST') mode = GameModes.COURSE_TEST;
+        else if (selectedSubMode === 'PARKING_TEST') mode = GameModes.PARKING_TEST;
+        else mode = GameModes.DRIVING_SCHOOL;
+
+        this.startPlayMode(mode, { subMode: selectedSubMode, skill: 'steering' });
+      },
+      (selectedSkill) => {
+        if (this.missionManager?.drivingSchoolManager) {
+          this.missionManager.drivingSchoolManager.selectPracticeSkill(selectedSkill);
+          const spawn = this.missionManager.drivingSchoolManager.getSpawnPosition(selectedSkill);
+          this.teleportVehicle(spawn);
+        }
+      },
+      () => {
+        if (this.missionManager?.drivingSchoolManager && (this.gameState.currentMode === GameModes.DRIVING_SCHOOL || this.gameState.currentMode === GameModes.PRACTICE)) {
+          const spawn = this.missionManager.drivingSchoolManager.getSpawnPosition();
+          this.teleportVehicle(spawn);
+          if (this.hud) this.hud.setPrompt('🚗 VEHICLE RESET TO SKILL START', 1500);
+        } else if (this.vehicleManager) {
+          this.vehicleManager.resetActiveVehicle(
+            this.trafficManager ? this.trafficManager.roadNetwork : null,
+            this.collisionSystem
+          );
+        }
+      }
+    );
+
     this.mainMenu = new MainMenu(
       this.uiContainer,
       this.gameState,
       this.audioManager,
-      (selectedMode) => this.startPlayMode(selectedMode)
+      (selectedMode) => this.startPlayMode(selectedMode),
+      () => this.drivingSchoolUI.showMenu()
     );
 
     this.hud = new HUD(
@@ -333,11 +432,33 @@ export class Game {
       this.uiContainer,
       this.audioManager,
       {
-        onContinue: () => this.gameState.setState(GameStates.PLAYING),
+        onContinue: () => {
+          if (this.gameState.currentMode === GameModes.ROAD_TEST) {
+            this.gameState.setState(GameStates.MENU);
+            if (this.drivingSchoolUI) this.drivingSchoolUI.showMenu();
+          } else {
+            this.gameState.setState(GameStates.PLAYING);
+          }
+        },
         onRetry: () => this.startPlayMode(this.gameState.currentMode),
         onResume: () => this.gameState.setState(GameStates.PLAYING),
+        onControls: () => {
+          this.previousStateBeforeSettings = GameStates.PAUSED;
+          this.settingsInitialTab = 'controls';
+          this.gameState.setState(GameStates.SETTINGS);
+        },
+        onSettings: () => {
+          this.previousStateBeforeSettings = GameStates.PAUSED;
+          this.settingsInitialTab = 'graphics';
+          this.gameState.setState(GameStates.SETTINGS);
+        },
         onGarage: () => this.gameState.setState(GameStates.GARAGE),
-        onMainMenu: () => this.gameState.setState(GameStates.MENU)
+        onMainMenu: () => {
+          this.gameState.setState(GameStates.MENU);
+          if (this.gameState.currentMode === GameModes.ROAD_TEST && this.drivingSchoolUI) {
+            this.drivingSchoolUI.showMenu();
+          }
+        }
       }
     );
 
@@ -346,7 +467,28 @@ export class Game {
       this.gameState,
       this.audioManager,
       (timeOfDay) => this.setTimeOfDay(timeOfDay),
-      this.inputManager
+      this.inputManager,
+      (density) => {
+        if (this.trafficManager) {
+          this.trafficManager.setDensity(density);
+        }
+      },
+      (graphicsSettings) => {
+        this.applyGraphicsSettings(graphicsSettings);
+      },
+      (assistMode) => {
+        const phys = this.vehicleManager?.getActivePhysics();
+        if (phys && typeof phys.setDrivingAssistance === 'function') {
+          phys.setDrivingAssistance(assistMode);
+        }
+      },
+      () => {
+        if (this.previousStateBeforeSettings) {
+          this.gameState.setState(this.previousStateBeforeSettings);
+        } else {
+          this.gameState.setState(GameStates.PAUSED);
+        }
+      }
     );
 
     this.pitStopUI = new PitStopUI(
@@ -413,7 +555,9 @@ export class Game {
 
     this.inputManager.onAction('map', () => {
       if (this.gameState.currentState === GameStates.PLAYING) {
-        this.gameState.setState(GameStates.MAP);
+        if (this.hud) {
+          this.hud.toggleMinimap();
+        }
       } else if (this.gameState.currentState === GameStates.MAP) {
         this.gameState.setState(GameStates.PLAYING);
       }
@@ -422,16 +566,41 @@ export class Game {
     this.inputManager.onAction('menu', () => {
       if (this.gameState.currentState === GameStates.PLAYING) {
         this.pauseGame();
-      } else if (this.gameState.currentState === GameStates.PAUSED || this.gameState.currentState === GameStates.MAP || this.gameState.currentState === GameStates.SETTINGS) {
+      } else if (this.gameState.currentState === GameStates.PAUSED) {
+        this.gameState.setState(GameStates.PLAYING);
+      } else if (this.gameState.currentState === GameStates.SETTINGS) {
+        if (this.previousStateBeforeSettings) {
+          this.gameState.setState(this.previousStateBeforeSettings);
+        } else {
+          this.gameState.setState(GameStates.PAUSED);
+        }
+      } else if (this.gameState.currentState === GameStates.MAP) {
         this.gameState.setState(GameStates.PLAYING);
       }
     });
 
     this.inputManager.onAction('resetVehicle', () => {
-      const phys = this.vehicleManager.getActivePhysics();
-      if (phys) {
-        phys.resetPosition(phys.position.x, 0.5, phys.position.z, phys.heading);
-        this.audioManager.playUIClick();
+      if (this.gameState.currentMode === GameModes.DRIVING_SCHOOL || this.gameState.currentMode === GameModes.PRACTICE) {
+        if (this.missionManager?.drivingSchoolManager) {
+          const spawn = this.missionManager.drivingSchoolManager.getSpawnPosition();
+          this.teleportVehicle(spawn);
+          if (this.audioManager) this.audioManager.playUIClick();
+          if (this.hud && typeof this.hud.setPrompt === 'function') {
+            this.hud.setPrompt('🚗 VEHICLE RESET TO SKILL START', 1500);
+          }
+          return;
+        }
+      }
+
+      if (this.vehicleManager) {
+        this.vehicleManager.resetActiveVehicle(
+          this.trafficManager ? this.trafficManager.roadNetwork : null,
+          this.collisionSystem
+        );
+        if (this.audioManager) this.audioManager.playUIClick();
+        if (this.hud && typeof this.hud.setPrompt === 'function') {
+          this.hud.setPrompt('🚗 VEHICLE RESET TO ROAD', 2000);
+        }
       }
     });
   }
@@ -447,32 +616,45 @@ export class Game {
       this.missionUI.hidePause();
       this.missionUI.hideResult();
       if (this.pitStopUI) this.pitStopUI.hide();
+      if (this.drivingSchoolUI) this.drivingSchoolUI.hideMenu();
 
       switch (current) {
         case GameStates.MENU:
           this.cameraManager.setMode(CameraModes.SHOWROOM);
           this.mainMenu.show();
           this.audioManager.setAmbientShowroom(true);
+          if (this.drivingSchoolUI) this.drivingSchoolUI.hideTutor();
           break;
 
         case GameStates.GARAGE:
           this.cameraManager.setMode(CameraModes.SHOWROOM);
           this.garageUI.show();
           this.audioManager.setAmbientShowroom(true);
+          if (this.drivingSchoolUI) this.drivingSchoolUI.hideTutor();
           break;
 
         case GameStates.MAP:
           this.mapUI.show();
+          if (this.drivingSchoolUI) this.drivingSchoolUI.hideTutor();
           break;
 
         case GameStates.SETTINGS:
-          this.settingsUI.show();
+          this.settingsUI.show(this.settingsInitialTab || 'graphics');
+          this.settingsInitialTab = null;
+          if (this.drivingSchoolUI) this.drivingSchoolUI.hideTutor();
           break;
 
         case GameStates.PLAYING:
           this.cameraManager.setMode(CameraModes.CHASE);
           this.hud.show();
           this.audioManager.setAmbientShowroom(false);
+          if (this.drivingSchoolUI) {
+            if (this.gameState.currentMode === GameModes.DRIVING_SCHOOL || this.gameState.currentMode === GameModes.PRACTICE) {
+              this.drivingSchoolUI.showTutor();
+            } else {
+              this.drivingSchoolUI.hideTutor();
+            }
+          }
           break;
 
         case GameStates.PAUSED:
@@ -486,21 +668,38 @@ export class Game {
   startPlayMode(mode, options = {}) {
     this.gameState.setMode(mode);
     this.gameState.setState(GameStates.PLAYING);
+    this.resultShown = false;
 
-    let spawn = { x: 0, y: 0.4, z: 0, heading: 0 };
+    let spawn = { x: 0, y: 0.45, z: 0, heading: 0 };
     if (mode === GameModes.RACING_TRACK) {
       // Spawn on Starting Grid Box 1 (Pole Position) facing North down the straight
       spawn = { x: -464, y: 0.4, z: -125, heading: 0 };
     } else if (mode === GameModes.CAR_PLAYGROUND) {
       // Spawn at the start of the 400m Drag Strip facing North
       spawn = { x: -420, y: 0.4, z: 200, heading: 0 };
-    } else if (mode === GameModes.DRIVING_SCHOOL) {
-      spawn = { x: 0, y: 0.4, z: -20, heading: 0 };
+    } else if (mode === GameModes.DRIVING_SCHOOL || mode === GameModes.PRACTICE) {
+      const skill = (typeof options === 'object' && options.skill) ? options.skill : 'steering';
+      const dsSpawn = this.missionManager?.drivingSchoolManager?.getSpawnPosition(skill);
+      spawn = dsSpawn || { x: -163, y: 0.45, z: 110, heading: Math.PI / 2 };
+    } else if (mode === GameModes.PARKING_TEST) {
+      spawn = this.missionManager?.drivingSchoolManager?.getSpawnPosition('PARKING_TEST') || { x: -135, y: 0.45, z: 80, heading: 0 };
+    } else if (mode === GameModes.ROAD_TEST) {
+      spawn = this.missionManager?.drivingSchoolManager?.getSpawnPosition('ROAD_TEST') || { x: 4.2, y: 0.45, z: -15, heading: 0 };
+    } else if (mode === GameModes.COURSE_TEST) {
+      spawn = this.missionManager?.drivingSchoolManager?.getSpawnPosition('COURSE_TEST') || { x: -165, y: 0.45, z: 65, heading: 0 };
     }
 
     this.teleportVehicle(spawn);
     this.missionManager.startMode(mode, options);
     this.navigationSystem.setCheckpoints(this.missionManager.activeCheckpoints);
+
+    if (this.drivingSchoolUI) {
+      if (mode === GameModes.DRIVING_SCHOOL || mode === GameModes.PRACTICE) {
+        this.drivingSchoolUI.showTutor();
+      } else {
+        this.drivingSchoolUI.hideTutor();
+      }
+    }
   }
 
   teleportVehicle(spawn) {
@@ -544,7 +743,8 @@ export class Game {
 
     // 2. Update player vehicle & gameplay
     if (this.gameState.currentState === GameStates.PLAYING) {
-      this.vehicleManager.update(dt, this.collisionSystem);
+      const trafficCars = this.trafficManager ? this.trafficManager.cars : [];
+      this.vehicleManager.update(dt, this.collisionSystem, trafficCars);
 
       // Deplete fuel slowly while driving
       if (currentPhysics && currentPhysics.forwardSpeed > 1) {
@@ -586,11 +786,36 @@ export class Game {
       }
 
       // Step missions
-      const missionData = this.missionManager.update(dt, currentPhysics, this.collisionSystem, this.racingTrack);
-      if (missionData && missionData.isCompleted) {
-        this.missionUI.showResult(true, 'MISSION COMPLETE', 'All checkpoints conquered!', missionData.reward || 2000);
-      } else if (missionData && missionData.isFailed) {
-        this.missionUI.showResult(false, 'TEST FAILED', missionData.failReason || 'Disqualified', 0);
+      const missionData = this.missionManager.update(dt, currentPhysics, this.collisionSystem, this.racingTrack, currentController, this.inputManager);
+      if (missionData && (missionData.subMode === 'PRACTICE' || missionData.subMode === 'PARKING_TEST')) {
+        if (this.drivingSchoolUI) {
+          this.drivingSchoolUI.updatePracticeTelemetry(missionData);
+        }
+      }
+      if (missionData && missionData.isCompleted && missionData.subMode !== 'PRACTICE') {
+        if (!this.resultShown) {
+          this.resultShown = true;
+          let title = 'MISSION COMPLETE';
+          let msg = 'All checkpoints conquered!';
+          if (missionData.isRoadTest) {
+            title = 'ROAD TEST COMPLETE';
+            msg = 'PASSED';
+          } else if (missionData.isCourseTest) {
+            title = 'COURSE TEST COMPLETE';
+            msg = `PASSED — Accuracy: ${missionData.accuracy}%`;
+          } else if (missionData.isParkingTest) {
+            title = 'PARKING TEST COMPLETE';
+            msg = `PASSED — Accuracy: ${missionData.finalAccuracy || missionData.accuracy}%`;
+          }
+          this.missionUI.showResult(true, title, msg, missionData.reward || 2000, missionData);
+        }
+      } else if (missionData && missionData.isFailed && missionData.subMode !== 'PRACTICE') {
+        if (!this.resultShown) {
+          this.resultShown = true;
+          const title = 'TEST FAILED';
+          const reason = missionData.failReason || 'Too many mistakes.';
+          this.missionUI.showResult(false, title, reason, 0, missionData);
+        }
       }
 
       // Update Navigation System radar
@@ -614,8 +839,14 @@ export class Game {
       if (vehicle) vehicle.update(currentPhysics, dt);
     }
 
+    const activeVehicle = this.vehicleManager.getActiveVehicle();
+    if (activeVehicle && this.mirrorSystem) {
+      this.mirrorSystem.attachToVehicle(activeVehicle);
+      this.mirrorSystem.update(activeVehicle, dt);
+    }
+
     // Camera update
-    this.cameraManager.update(currentPhysics, dt, this.vehicleManager.getActiveVehicle());
+    this.cameraManager.update(currentPhysics, dt, activeVehicle);
 
     // WebGL render pass
     this.renderer.render(this.scene, this.camera);

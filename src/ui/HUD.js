@@ -16,6 +16,7 @@ export class HUD {
 
     this.root = null;
     this.radarCanvas = null;
+    this.minimapVisible = true;
     this.statsCardVisible = false;
     this.mobileControls = null;
 
@@ -59,14 +60,75 @@ export class HUD {
     this.root.style.display = 'none';
 
     this.root.innerHTML = `
-      <!-- Top Left: GPS Mini-Map Radar -->
-      <div class="hud-radar-container glass-panel">
-        <div class="radar-header">
-          <span class="radar-title">GPS RADAR</span>
-          <span class="gps-dist" id="hud-gps-dist">0 M</span>
+      <!-- Top Center: Clean Digital Dashboard (SPEED | GEAR | MODE) -->
+      <div class="hud-clean-dashboard glass-panel" id="hud-clean-dashboard">
+        <div class="hud-trio-row">
+          <!-- SPEED Column -->
+          <div class="hud-trio-cell speed-cell">
+            <span class="hud-trio-label">SPEED</span>
+            <div class="hud-trio-val-wrap">
+              <span class="hud-trio-number" id="hud-speed">0</span>
+              <span class="hud-trio-unit" id="hud-speed-unit">KM/H</span>
+            </div>
+          </div>
+          
+          <div class="hud-trio-sep"></div>
+
+          <!-- GEAR Column -->
+          <div class="hud-trio-cell gear-cell">
+            <span class="hud-trio-label">GEAR</span>
+            <div class="hud-trio-val-wrap" id="hud-gear-container" aria-label="Gear">
+              <span class="hud-trio-number" id="hud-gear">1</span>
+            </div>
+          </div>
+
+          <div class="hud-trio-sep"></div>
+
+          <!-- MODE Column -->
+          <div class="hud-trio-cell mode-cell">
+            <span class="hud-trio-label">MODE</span>
+            <div class="hud-trio-val-wrap">
+              <button class="hud-trio-mode-btn mode-sport" id="hud-drive-mode" title="Toggle Drive Mode (SHIFT / Click)">SPORT</button>
+            </div>
+          </div>
         </div>
-        <canvas id="hud-radar-canvas" width="180" height="180"></canvas>
+
+        <!-- Integrated Tachometer RPM & Fuel Level Strip -->
+        <div class="hud-trio-aux-bar">
+          <div class="hud-trio-rpm-track" title="Tachometer RPM">
+            <div class="hud-trio-rpm-fill" id="hud-rpm-fill"></div>
+          </div>
+          <div class="hud-trio-fuel-box" title="Vehicle Fuel Level">
+            <span class="hud-fuel-glyph">⛽</span>
+            <div class="hud-trio-fuel-track">
+              <div class="hud-trio-fuel-fill" id="hud-fuel-fill"></div>
+            </div>
+            <span class="hud-fuel-pct" id="hud-fuel-text">100%</span>
+          </div>
+        </div>
       </div>
+
+      <!-- Top Left: Small Minimap (Toggleable [M]) -->
+      <div class="hud-radar-container hud-minimap-card glass-panel" id="hud-radar-container">
+        <div class="radar-header">
+          <div class="radar-title-wrap">
+            <span class="radar-glyph">🧭</span>
+            <span class="radar-title">MINI MAP</span>
+          </div>
+          <div class="radar-right-wrap">
+            <span class="gps-dist" id="hud-gps-dist">0 M</span>
+            <button class="minimap-toggle-close" id="btn-close-minimap" title="Hide Mini Map [M]">✕</button>
+          </div>
+        </div>
+        <canvas id="hud-radar-canvas" width="170" height="170"></canvas>
+      </div>
+
+      <!-- Mini Map Collapsed Pill (Visible when Mini Map is hidden) -->
+      <button class="minimap-collapsed-pill glass-panel" id="btn-reopen-minimap" style="display: none;" title="Open Mini Map [M]">
+        <span class="pill-icon">🧭</span>
+        <span class="pill-text">MINI MAP</span>
+        <span class="pill-key">[M]</span>
+      </button>
 
       <!-- Top Center: Proximity Interactive Prompt Banner -->
       <div class="hud-center-top">
@@ -130,129 +192,75 @@ export class HUD {
         </div>
       </div>
 
-      <!-- Center Bottom: Automotive Cluster with Modern Digital Dashboard & Gear Selector -->
-      <div class="hud-cluster-container">
-        <!-- Auxiliary status row: wipers, roof, doors, park brake -->
-        <div class="cluster-status-row">
-          <div class="status-indicator" id="hud-wiper-icon" title="Wipers [X]">🌧️</div>
-          <div class="status-indicator" id="hud-roof-icon" title="Roof [T]">🔓</div>
-          <div class="status-indicator" id="hud-door-icon" title="Doors [O]">🚪</div>
-          <div class="status-indicator" id="hud-brake-icon" title="Handbrake [SPACE]">PARK</div>
-        </div>
+      <!-- Center Bottom: Clean Controls Bar ([LIGHT] [INDICATOR] [CAMERA]) -->
+      <div class="hud-clean-bottom-bar">
+        <div class="hud-primary-trio-controls">
+          <!-- [LIGHT] Button -->
+          <button class="hud-primary-btn" id="btn-ctrl-lights" title="Toggle Headlights [L]">
+            <span class="primary-btn-icon" id="hud-light-icon">💡</span>
+            <span class="primary-btn-label">[LIGHT]</span>
+            <span class="primary-btn-status" id="hud-light-status-text">OFF</span>
+          </button>
 
-        <div class="hud-main-cluster-layout">
-          <!-- Dedicated Gear Selector Ladder Panel (GEAR: P, R, N, 1, 2, 3, 4, 5, 6) -->
-          <div class="hud-gear-ladder-card glass-panel" id="hud-gear-ladder-card">
-            <div class="gear-ladder-header">
-              <span class="gear-ladder-title">GEAR</span>
-              <button class="gear-mode-badge" id="btn-toggle-transmission" title="Toggle Automatic / Manual Mode">AUTO</button>
-            </div>
-            <div class="gear-ladder-steps" id="hud-gear-steps">
-              <button class="gear-step-item" data-gear="P" title="Park [P]">P</button>
-              <button class="gear-step-item" data-gear="R" title="Reverse [R]">R</button>
-              <button class="gear-step-item" data-gear="N" title="Neutral [N]">N</button>
-              <button class="gear-step-item active" data-gear="1" title="1st Gear [1]">1</button>
-              <button class="gear-step-item" data-gear="2" title="2nd Gear [2]">2</button>
-              <button class="gear-step-item" data-gear="3" title="3rd Gear [3]">3</button>
-              <button class="gear-step-item" data-gear="4" title="4th Gear [4]">4</button>
-              <button class="gear-step-item" data-gear="5" title="5th Gear [5]">5</button>
-              <button class="gear-step-item" data-gear="6" title="6th Gear [6]">6</button>
-            </div>
-            <div class="gear-ladder-footer">
-              <button class="gear-mini-btn" id="btn-gear-down" title="Shift Down (▼)">▼</button>
-              <button class="gear-mini-btn gear-cycle-btn" id="btn-gear-cycle" title="Cycle Gear [G]">[G]</button>
-              <button class="gear-mini-btn" id="btn-gear-up" title="Shift Up (▲)">▲</button>
-            </div>
+          <!-- [INDICATOR] Controls Group -->
+          <div class="hud-indicator-control-box glass-panel">
+            <button class="indicator-arrow-btn" id="btn-ctrl-ind-l" title="Left Turn Signal [I]">◀</button>
+            <button class="indicator-center-btn" id="btn-ctrl-hazard" title="Hazard Flasher [H]">
+              <span class="indicator-glyph" id="hud-hazard-icon">⚠️</span>
+              <span class="indicator-label">[INDICATOR]</span>
+            </button>
+            <button class="indicator-arrow-btn" id="btn-ctrl-ind-r" title="Right Turn Signal [K]">▶</button>
           </div>
 
-          <!-- Modern Digital Dashboard Cluster -->
-          <!-- ┌───────────────────────────┐ -->
-          <!-- │       142 KM/H            │ -->
-          <!-- │        GEAR 4             │ -->
-          <!-- │       SPORT MODE          │ -->
-          <!-- └───────────────────────────┘ -->
-          <div class="cluster-gauge modern-digital-dashboard glass-panel" id="modern-digital-dashboard">
-            <!-- Modern Digital Dashboard Header: Indicators & Light Status -->
-            <div class="dash-status-strip">
-              <div class="dash-status-pill dash-ind-pill" id="hud-ind-left" title="Left Turn Signal [I]">
-                <span class="dash-ind-glyph">◀</span>
-                <span class="dash-status-sub">LEFT</span>
-              </div>
-              <div class="dash-status-pill dash-lights-pill" id="hud-light-icon" title="Headlights [L]">
-                <span class="dash-light-glyph">💡</span>
-                <span class="dash-light-label" id="hud-light-status-text">LIGHTS OFF</span>
-              </div>
-              <div class="dash-status-pill dash-hazard-pill" id="hud-hazard-icon" title="Hazard Flasher [H]">
-                <span class="dash-hazard-glyph">⚠️</span>
-                <span class="dash-hazard-sub">HAZARD</span>
-              </div>
-              <div class="dash-status-pill dash-off-pill" id="hud-ind-off" title="Indicators Off [J]">
-                <span class="dash-off-glyph">✕</span>
-                <span class="dash-status-sub">OFF</span>
-              </div>
-              <div class="dash-status-pill dash-ind-pill" id="hud-ind-right" title="Right Turn Signal [K]">
-                <span class="dash-status-sub">RIGHT</span>
-                <span class="dash-ind-glyph">▶</span>
-              </div>
-            </div>
-
-            <!-- Tachometer Dynamic RPM Arc Ribbon -->
-            <div class="rpm-meter-track">
-              <div class="rpm-meter-fill" id="hud-rpm-fill"></div>
-            </div>
-
-            <!-- Central Digital Display Frame:
-                 ┌───────────────────────────┐
-                 │       142 KM/H            │
-                 │        GEAR 4             │
-                 │       SPORT MODE          │
-                 └───────────────────────────┘
-            -->
-            <div class="dash-display-box" id="hud-dash-box">
-              <div class="dash-speed-row">
-                <span class="dash-speed-val" id="hud-speed">0</span>
-                <span class="dash-speed-unit" id="hud-speed-unit">KM/H</span>
-              </div>
-              <div class="dash-gear-row" id="hud-gear-container" aria-label="Gear">
-                <span class="dash-gear-prefix">GEAR</span>
-                <span class="dash-gear-val" id="hud-gear">1</span>
-              </div>
-              <div class="dash-mode-row">
-                <button class="dash-mode-badge mode-comfort" id="hud-drive-mode" title="Toggle Drive Mode (SHIFT / Click)">COMFORT MODE</button>
-              </div>
-            </div>
-
-            <!-- Telemetry Sub-row: RPM & Fuel Bar -->
-            <div class="dash-footer-row">
-              <div class="dash-rpm-readout">
-                <span class="dash-aux-label">RPM</span>
-                <span class="dash-rpm-val" id="hud-rpm">850</span>
-              </div>
-              <div class="dash-fuel-gauge">
-                <span class="fuel-icon">⛽</span>
-                <div class="fuel-bar-track">
-                  <div class="fuel-bar-fill" id="hud-fuel-fill"></div>
-                </div>
-                <span class="fuel-text" id="hud-fuel-text">100%</span>
-              </div>
-            </div>
-          </div>
+          <!-- [CAMERA] Button -->
+          <button class="hud-primary-btn" id="hud-cam-btn" title="Toggle Camera View [C]">
+            <span class="primary-btn-icon">🎥</span>
+            <span class="primary-btn-label">[CAMERA]</span>
+            <span class="primary-btn-status" id="hud-cam-name">CHASE</span>
+          </button>
         </div>
 
-        <!-- Interactive Control Bar Hints & Clickable Controls -->
-        <div class="hud-controls-bar">
-          <button class="control-tag-btn" id="btn-ctrl-stats"><span>[V]</span> STATS</button>
-          <button class="control-tag-btn" id="btn-ctrl-lights"><span>[L]</span> LIGHTS</button>
-          <button class="control-tag-btn" id="btn-ctrl-ind-l"><span>[I]</span> LEFT</button>
-          <button class="control-tag-btn" id="btn-ctrl-hazard"><span>[H]</span> HAZARD</button>
-          <button class="control-tag-btn" id="btn-ctrl-ind-r"><span>[K]</span> RIGHT</button>
-          <button class="control-tag-btn" id="btn-ctrl-wipers"><span>[X]</span> WIPERS</button>
-          <button class="control-tag-btn" id="btn-ctrl-gear"><span>[G]</span> GEAR</button>
-          <button class="control-tag-btn" id="btn-ctrl-doors"><span>[O]</span> DOORS</button>
-          <button class="control-tag-btn" id="btn-ctrl-trunk"><span>[U]</span> BOOT</button>
-          <button class="control-tag-btn" id="btn-ctrl-roof"><span>[T]</span> ROOF</button>
-          <button class="control-tag-btn" id="btn-ctrl-refuel"><span>[F]</span> REFUEL</button>
-          <button class="control-tag-btn" id="btn-ctrl-reset"><span>[R]</span> RESET</button>
+        <!-- Compact Auxiliary Controls Bar -->
+        <div class="hud-compact-aux-row">
+          <button class="hud-aux-chip active-action" id="btn-ctrl-minimap" title="Toggle Mini Map [M]"><span>[M]</span> MAP</button>
+          <button class="hud-aux-chip" id="btn-ctrl-stats" title="Toggle Vehicle Specs [V]"><span>[V]</span> STATS</button>
+          <button class="hud-aux-chip" id="btn-ctrl-doors" title="Toggle Vehicle Doors [O]"><span>[O]</span> DOORS</button>
+          <button class="hud-aux-chip" id="btn-ctrl-trunk" title="Toggle Boot [U]"><span>[U]</span> BOOT</button>
+          <button class="hud-aux-chip" id="btn-ctrl-roof" title="Toggle Roof [T]"><span>[T]</span> ROOF</button>
+          <button class="hud-aux-chip" id="btn-ctrl-gear" title="Cycle Gear [G]"><span>[G]</span> GEAR</button>
+          <button class="hud-aux-chip" id="btn-ctrl-wipers" title="Toggle Wipers [X]"><span>[X]</span> WIPERS</button>
+          <button class="hud-aux-chip" id="btn-ctrl-reset" title="Reset Vehicle to Road [R]"><span>[R]</span> RESET</button>
+          <button class="hud-aux-chip" id="hud-pause-btn" title="Pause / Menu [ESC]"><span>[ESC]</span> MENU</button>
+        </div>
+      </div>
+
+      <!-- Interactive 4-Door System Management Panel -->
+      <div class="hud-door-control-panel glass-panel" id="hud-door-panel" style="display: none;">
+        <div class="hud-door-header">
+          <span class="hud-door-title">🚪 VEHICLE DOORS</span>
+          <button class="hud-stats-close-btn" id="btn-close-door-panel">✕</button>
+        </div>
+        <div class="hud-door-grid">
+          <button class="hud-door-btn" id="btn-hud-door-fl" data-door="frontLeft" title="Front-Left Door">
+            <span class="hud-door-name">FRONT-LEFT</span>
+            <span class="hud-door-status-badge" id="badge-door-fl">CLOSED</span>
+          </button>
+          <button class="hud-door-btn" id="btn-hud-door-fr" data-door="frontRight" title="Front-Right Door">
+            <span class="hud-door-name">FRONT-RIGHT</span>
+            <span class="hud-door-status-badge" id="badge-door-fr">CLOSED</span>
+          </button>
+          <button class="hud-door-btn" id="btn-hud-door-rl" data-door="rearLeft" title="Rear-Left Door">
+            <span class="hud-door-name">REAR-LEFT</span>
+            <span class="hud-door-status-badge" id="badge-door-rl">CLOSED</span>
+          </button>
+          <button class="hud-door-btn" id="btn-hud-door-rr" data-door="rearRight" title="Rear-Right Door">
+            <span class="hud-door-name">REAR-RIGHT</span>
+            <span class="hud-door-status-badge" id="badge-door-rr">CLOSED</span>
+          </button>
+        </div>
+        <div class="hud-door-footer">
+          <button class="hud-door-all-btn" id="btn-hud-doors-open-all">OPEN ALL</button>
+          <button class="hud-door-all-btn" id="btn-hud-doors-close-all">CLOSE ALL</button>
         </div>
       </div>
     `;
@@ -272,14 +280,15 @@ export class HUD {
     this.rpmBar = this.root.querySelector('#hud-rpm-fill');
     this.rpmText = this.root.querySelector('#hud-rpm');
     this.fuelFill = this.root.querySelector('#hud-fuel-fill');
-    this.blinkerLeft = this.root.querySelector('#hud-ind-left');
-    this.blinkerRight = this.root.querySelector('#hud-ind-right');
+    this.blinkerLeft = this.root.querySelector('#btn-ctrl-ind-l') || this.root.querySelector('#hud-ind-left');
+    this.blinkerRight = this.root.querySelector('#btn-ctrl-ind-r') || this.root.querySelector('#hud-ind-right');
     this.hazardIcon = this.root.querySelector('#hud-hazard-icon');
-    this.indOffPill = this.root.querySelector('#hud-ind-off');
     this.headlightIcon = this.root.querySelector('#hud-light-icon');
     this.wiperIcon = this.root.querySelector('#hud-wiper-icon');
     this.roofIcon = this.root.querySelector('#hud-roof-icon');
     this.doorIcon = this.root.querySelector('#hud-door-icon');
+    this.btnCtrlTrunk = this.root.querySelector('#btn-ctrl-trunk');
+    this.btnCtrlRoof = this.root.querySelector('#btn-ctrl-roof');
     this.handbrakeIcon = this.root.querySelector('#hud-brake-icon');
     this.cameraModeText = this.root.querySelector('#hud-cam-name');
     this.missionPanel = this.root.querySelector('#hud-mission-panel');
@@ -288,6 +297,19 @@ export class HUD {
     this.missionStats = this.root.querySelector('#hud-mission-stats');
     this.promptBanner = this.root.querySelector('#hud-prompt-banner');
     this.statsCard = this.root.querySelector('#hud-vehicle-stats-card');
+    this.doorPanel = this.root.querySelector('#hud-door-panel');
+    this.doorButtons = {
+      frontLeft: this.root.querySelector('#btn-hud-door-fl'),
+      frontRight: this.root.querySelector('#btn-hud-door-fr'),
+      rearLeft: this.root.querySelector('#btn-hud-door-rl'),
+      rearRight: this.root.querySelector('#btn-hud-door-rr')
+    };
+    this.doorBadges = {
+      frontLeft: this.root.querySelector('#badge-door-fl'),
+      frontRight: this.root.querySelector('#badge-door-fr'),
+      rearLeft: this.root.querySelector('#badge-door-rl'),
+      rearRight: this.root.querySelector('#badge-door-rr')
+    };
 
     // Instantiate Mobile/Tablet Touch Controls
     this.mobileControls = new MobileControls(this.container, this.input, this.audio, this.vehicleManager);
@@ -344,17 +366,71 @@ export class HUD {
       this.onPause();
     });
 
+    // Minimap Toggle Listeners
+    addListener('#btn-close-minimap', () => this.toggleMinimap(false));
+    addListener('#btn-reopen-minimap', () => this.toggleMinimap(true));
+    addListener('#btn-ctrl-minimap', () => this.toggleMinimap());
+
+    window.addEventListener('keydown', (e) => {
+      if (e.code === 'KeyM' && !e.target.matches('input, textarea')) {
+        this.toggleMinimap();
+      }
+    });
+
     addListener('#btn-ctrl-lights', () => this.input.triggerAction('toggleHeadlights'));
     addListener('#btn-ctrl-ind-l', () => this.input.triggerAction('toggleLeftIndicator'));
     addListener('#btn-ctrl-ind-r', () => this.input.triggerAction('toggleRightIndicator'));
     addListener('#btn-ctrl-hazard', () => this.input.triggerAction('toggleHazard'));
     addListener('#btn-ctrl-wipers', () => this.input.triggerAction('toggleWipers'));
     addListener('#btn-ctrl-gear', () => this.input.triggerAction('gearControl'));
-    addListener('#btn-ctrl-doors', () => this.input.triggerAction('toggleDoors'));
+    addListener('#btn-ctrl-doors', () => this.toggleDoorPanel());
     addListener('#btn-ctrl-trunk', () => this.input.triggerAction('toggleTrunk'));
     addListener('#btn-ctrl-roof', () => this.input.triggerAction('toggleRoof'));
     addListener('#btn-ctrl-refuel', () => this.input.triggerAction('refuel'));
     addListener('#btn-ctrl-reset', () => this.input.triggerAction('resetVehicle'));
+
+    // Door Panel Controls
+    addListener('#btn-close-door-panel', () => {
+      if (this.doorPanel) this.doorPanel.style.display = 'none';
+      this.audio.playUIClick();
+    });
+
+    if (this.doorIcon) {
+      this.doorIcon.addEventListener('click', () => this.toggleDoorPanel());
+    }
+
+    ['frontLeft', 'frontRight', 'rearLeft', 'rearRight'].forEach(doorKey => {
+      const btn = this.doorButtons ? this.doorButtons[doorKey] : null;
+      if (btn) {
+        btn.addEventListener('click', () => {
+          const ctrl = this.vehicleManager ? this.vehicleManager.getActiveController() : null;
+          if (ctrl && ctrl.toggleDoor) {
+            const isOpen = ctrl.toggleDoor(doorKey);
+            const doorName = doorKey.replace(/([A-Z])/g, ' $1').toUpperCase();
+            this.setPrompt(`🚪 ${doorName} ${isOpen ? 'OPENED' : 'CLOSED'}`);
+            setTimeout(() => this.setPrompt(''), 2000);
+          }
+        });
+      }
+    });
+
+    addListener('#btn-hud-doors-open-all', () => {
+      const ctrl = this.vehicleManager ? this.vehicleManager.getActiveController() : null;
+      if (ctrl && ctrl.openAllDoors) {
+        ctrl.openAllDoors();
+        this.setPrompt('🚪 ALL DOORS OPENED');
+        setTimeout(() => this.setPrompt(''), 2000);
+      }
+    });
+
+    addListener('#btn-hud-doors-close-all', () => {
+      const ctrl = this.vehicleManager ? this.vehicleManager.getActiveController() : null;
+      if (ctrl && ctrl.closeAllDoors) {
+        ctrl.closeAllDoors();
+        this.setPrompt('🚪 ALL DOORS CLOSED');
+        setTimeout(() => this.setPrompt(''), 2000);
+      }
+    });
 
     // Modern Digital Dashboard click triggers
     if (this.driveModeBadge) {
@@ -374,9 +450,6 @@ export class HUD {
     }
     if (this.hazardIcon) {
       this.hazardIcon.addEventListener('click', () => this.input.triggerAction('toggleHazard'));
-    }
-    if (this.indOffPill) {
-      this.indOffPill.addEventListener('click', () => this.input.triggerAction('indicatorsOff'));
     }
 
     // Gear Ladder Controls & Transmission Mode Toggle
@@ -475,6 +548,46 @@ export class HUD {
     }
   }
 
+  toggleDoorPanel() {
+    if (!this.doorPanel) return;
+    const isVisible = this.doorPanel.style.display !== 'none';
+    this.doorPanel.style.display = isVisible ? 'none' : 'flex';
+    this.audio.playUIClick();
+  }
+
+  hideDoorPanel() {
+    if (this.doorPanel) {
+      this.doorPanel.style.display = 'none';
+    }
+  }
+
+  toggleMinimap(forceState) {
+    if (forceState !== undefined) {
+      this.minimapVisible = Boolean(forceState);
+    } else {
+      this.minimapVisible = !this.minimapVisible;
+    }
+
+    const radar = this.root ? this.root.querySelector('#hud-radar-container') : null;
+    const reopenBtn = this.root ? this.root.querySelector('#btn-reopen-minimap') : null;
+    const toggleBtn = this.root ? this.root.querySelector('#btn-ctrl-minimap') : null;
+
+    if (radar) {
+      radar.style.display = this.minimapVisible ? 'flex' : 'none';
+    }
+    if (reopenBtn) {
+      reopenBtn.style.display = this.minimapVisible ? 'none' : 'inline-flex';
+    }
+    if (toggleBtn) {
+      toggleBtn.classList.toggle('active-action', this.minimapVisible);
+    }
+
+    if (this.audio && this.audio.playUIClick) {
+      this.audio.playUIClick();
+    }
+    return this.minimapVisible;
+  }
+
   refreshStatsCard() {
     if (!this.vehicleManager) return;
     const vehicle = this.vehicleManager.getActiveVehicle();
@@ -497,7 +610,7 @@ export class HUD {
     this.root.querySelector('#hud-val-weight').textContent = stats.weight || dStats.weight || '1,380 kg';
   }
 
-  update(telemetry = {}, cameraMode = 'chase', missionData = null, gpsDistance = 0, fuelLevel = 100, dt = null) {
+  update(telemetry, cameraMode, missionData, gpsDistance, fuelLevel = 100, dt = null) {
     if (!this.root || this.root.style.display === 'none') return;
 
     // Delta time calculation for smooth, frame-rate independent transitions
@@ -569,15 +682,20 @@ export class HUD {
       }
     }
 
-    // 4. Drive Mode Display (SPORT MODE vs COMFORT MODE)
+    // 4. Drive Mode Display (SPORT vs COMFORT)
     const isSport = !!telemetry.isSportMode;
-    const modeText = telemetry.driveMode || (isSport ? 'SPORT MODE' : 'COMFORT MODE');
+    let modeText = 'SPORT';
+    if (telemetry.driveMode) {
+      modeText = String(telemetry.driveMode).replace(/\s*MODE$/i, '').trim().toUpperCase();
+    } else {
+      modeText = isSport ? 'SPORT' : 'COMFORT';
+    }
     if (this.driveModeBadge) {
       if (this.driveModeBadge.textContent !== modeText) {
         this.driveModeBadge.textContent = modeText;
       }
-      this.driveModeBadge.classList.toggle('mode-sport', isSport);
-      this.driveModeBadge.classList.toggle('mode-comfort', !isSport);
+      this.driveModeBadge.classList.toggle('mode-sport', isSport || modeText === 'SPORT');
+      this.driveModeBadge.classList.toggle('mode-comfort', !isSport && modeText !== 'SPORT');
     }
 
     // 5. Fuel Gauge
@@ -587,13 +705,13 @@ export class HUD {
       if (fuelText) fuelText.textContent = `${Math.round(fuelLevel)}%`;
     }
 
-    // 6. Light Status Display
+    // 6. Light Status Display ([LIGHT])
     const lightsActive = !!(telemetry.headlights || (telemetry.lights && telemetry.lights.headlights));
     if (this.headlightIcon) {
       this.headlightIcon.classList.toggle('active-blue', lightsActive);
     }
     if (this.lightStatusText) {
-      this.lightStatusText.textContent = lightsActive ? 'LIGHTS ON' : 'LIGHTS OFF';
+      this.lightStatusText.textContent = lightsActive ? 'ON' : 'OFF';
       this.lightStatusText.classList.toggle('active-text-glow', lightsActive);
     }
 
@@ -603,24 +721,47 @@ export class HUD {
     const hazardActive = !!(telemetry.hazard);
 
     if (this.blinkerLeft) {
-      this.blinkerLeft.classList.toggle('active-blink', leftActive);
+      this.blinkerLeft.classList.toggle('active-blink', leftActive || hazardActive);
     }
     if (this.blinkerRight) {
-      this.blinkerRight.classList.toggle('active-blink', rightActive);
+      this.blinkerRight.classList.toggle('active-blink', rightActive || hazardActive);
     }
     if (this.hazardIcon) {
       this.hazardIcon.classList.toggle('active-blink', hazardActive);
-    }
-    if (this.indOffPill) {
-      this.indOffPill.classList.toggle('active-dim', !leftActive && !rightActive && !hazardActive);
     }
 
     // Auxiliary indicators
     if (this.wiperIcon) this.wiperIcon.classList.toggle('active-green', !!telemetry.wipers);
     if (this.doorIcon) this.doorIcon.classList.toggle('active-warning', !!telemetry.doors);
+
+    // Update 4-door panel buttons & status badges
+    if (telemetry.doorStates && this.doorBadges) {
+      ['frontLeft', 'frontRight', 'rearLeft', 'rearRight'].forEach(doorKey => {
+        const state = telemetry.doorStates[doorKey];
+        const btn = this.doorButtons ? this.doorButtons[doorKey] : null;
+        const badge = this.doorBadges ? this.doorBadges[doorKey] : null;
+        if (state && badge && btn) {
+          const isOpen = Boolean(state.isOpen);
+          badge.textContent = isOpen ? 'OPEN' : 'CLOSED';
+          btn.classList.toggle('is-open', isOpen);
+        }
+      });
+    }
+
     if (this.roofIcon) {
       this.roofIcon.classList.toggle('active-green', !!telemetry.roof);
       this.roofIcon.style.display = telemetry.isConvertible ? 'flex' : 'none';
+    }
+    if (this.btnCtrlRoof) {
+      this.btnCtrlRoof.style.display = telemetry.isConvertible ? 'inline-flex' : 'none';
+      this.btnCtrlRoof.classList.toggle('active-action', !!telemetry.roof);
+      this.btnCtrlRoof.title = telemetry.isConvertible ? (telemetry.roof ? 'Close Roof [T]' : 'Open Roof [T]') : 'Roof Not Supported';
+    }
+    if (this.btnCtrlTrunk) {
+      const isBootSupported = telemetry.isBootSupported !== false;
+      this.btnCtrlTrunk.style.display = isBootSupported ? 'inline-flex' : 'none';
+      this.btnCtrlTrunk.classList.toggle('active-action', !!telemetry.boot);
+      this.btnCtrlTrunk.title = isBootSupported ? (telemetry.boot ? 'Close Boot [U]' : 'Open Boot [U]') : 'Boot Not Supported';
     }
     if (this.handbrakeIcon) {
       this.handbrakeIcon.classList.toggle('active-red', !!telemetry.handbrake);
@@ -628,8 +769,19 @@ export class HUD {
     }
 
     // 4. Camera Mode
+    const formatCam = (mode) => {
+      switch (mode) {
+        case 'chase': return 'CHASE [1]';
+        case 'close_chase': return 'CLOSE [2]';
+        case 'cockpit': return 'COCKPIT [3]';
+        case 'rear': return 'REAR [4]';
+        case 'free':
+        case 'orbit': return 'FREE [5]';
+        default: return String(mode).replace('_', ' ').toUpperCase();
+      }
+    };
     if (this.cameraModeText) {
-      this.cameraModeText.textContent = String(cameraMode || 'CHASE').toUpperCase();
+      this.cameraModeText.textContent = formatCam(cameraMode);
     }
 
     // 5. GPS Distance
@@ -638,7 +790,84 @@ export class HUD {
 
     // 6. Mission Tracker
     if (missionData) {
-      if (missionData.raceData) {
+      if (missionData.isRoadTest || missionData.subMode === 'ROAD_TEST' || missionData.mode === 'ROAD_TEST') {
+        const badgeEl = this.root.querySelector('#hud-mission-badge');
+        if (badgeEl) badgeEl.textContent = 'ROAD TEST';
+        this.missionTitle.textContent = 'ROAD TEST';
+        this.missionDesc.textContent = '';
+        this.missionStats.innerHTML = `
+          <div class="road-test-hud-panel">
+            <div class="rt-stat-row">
+              <span class="rt-lbl">Time:</span>
+              <strong class="rt-val">${missionData.timeFormatted || '00:00'}</strong>
+            </div>
+            <div class="rt-stat-row">
+              <span class="rt-lbl">Mistakes:</span>
+              <strong class="rt-val ${missionData.mistakes > 0 ? 'rt-mistake' : ''}">${missionData.mistakes || 0}</strong>
+            </div>
+            <div class="rt-stat-row">
+              <span class="rt-lbl">Checkpoints:</span>
+              <strong class="rt-val">${missionData.currentCheckpointIndex || 0}/${missionData.totalCheckpoints || 10}</strong>
+            </div>
+            <div class="rt-objective-box">
+              <div class="rt-obj-label">Objective:</div>
+              <div class="rt-obj-text">${missionData.objective || 'Complete the route safely.'}</div>
+            </div>
+          </div>
+        `;
+      } else if (missionData.isCourseTest || missionData.subMode === 'COURSE_TEST' || missionData.mode === 'COURSE_TEST') {
+        const badgeEl = this.root.querySelector('#hud-mission-badge');
+        if (badgeEl) badgeEl.textContent = 'COURSE TEST';
+        this.missionTitle.textContent = 'COURSE TEST';
+        this.missionDesc.textContent = '';
+        this.missionStats.innerHTML = `
+          <div class="course-test-hud-panel">
+            <div class="rt-stat-row">
+              <span class="rt-lbl">Completion time:</span>
+              <strong class="rt-val">${missionData.timeFormatted || '00:00'}</strong>
+            </div>
+            <div class="rt-stat-row">
+              <span class="rt-lbl">Collisions:</span>
+              <strong class="rt-val ${missionData.collisions > 0 ? 'rt-mistake' : ''}">${missionData.collisions || 0}</strong>
+            </div>
+            <div class="rt-stat-row">
+              <span class="rt-lbl">Missed checkpoints:</span>
+              <strong class="rt-val ${missionData.missedCheckpoints > 0 ? 'rt-mistake' : ''}">${missionData.missedCheckpoints || 0}</strong>
+            </div>
+            <div class="rt-stat-row">
+              <span class="rt-lbl">Driving accuracy:</span>
+              <strong class="rt-val ${missionData.accuracy < 80 ? 'rt-mistake' : 'rt-accuracy'}">${missionData.accuracy !== undefined ? missionData.accuracy : 100}%</strong>
+            </div>
+            <div class="rt-objective-box">
+              <div class="rt-obj-label">Course Section:</div>
+              <div class="rt-obj-text">${missionData.stageTitle || 'Follow course checkpoints'}</div>
+            </div>
+          </div>
+        `;
+      } else if (missionData.isParkingTest || missionData.subMode === 'PARKING_TEST' || missionData.mode === 'PARKING_TEST') {
+        const badgeEl = this.root.querySelector('#hud-mission-badge');
+        if (badgeEl) badgeEl.textContent = 'PARKING TEST';
+        this.missionTitle.textContent = 'PARKING TEST';
+        this.missionDesc.textContent = '';
+        this.missionStats.innerHTML = `
+          <div class="parking-test-hud-panel">
+            <div class="pt-prompt-instruction">${missionData.instruction || 'Position vehicle inside the marked area.'}</div>
+            <div class="pt-accuracy-display">
+              <span class="pt-acc-lbl">Accuracy:</span>
+              <strong class="pt-acc-val">${missionData.accuracy !== undefined ? missionData.accuracy : 86}%</strong>
+            </div>
+            <div class="pt-stage-info">
+              <span class="pt-stall-badge">${missionData.parkingType || 'Straight parking'}</span>
+              <span class="pt-stage-count">Stage ${missionData.parkingStage || 1}/${missionData.totalStages || 3}</span>
+            </div>
+            ${missionData.holdProgress > 0 ? `
+              <div class="pt-hold-track">
+                <div class="pt-hold-fill" style="width: ${Math.round(missionData.holdProgress * 100)}%;"></div>
+              </div>
+            ` : ''}
+          </div>
+        `;
+      } else if (missionData.raceData) {
         const rd = missionData.raceData;
         this.missionTitle.textContent = rd.mode === 'TIME_TRIAL' ? 'CIRCUIT TIME TRIAL' : 'FREE TRACK DRIVING';
         this.missionDesc.textContent = rd.isCountingDown ? `STARTING IN ${rd.countdown}...` : rd.lapDisplay;

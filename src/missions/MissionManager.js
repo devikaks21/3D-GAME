@@ -1,8 +1,9 @@
 import * as THREE from 'three';
 import { GameModes } from '../core/GameState.js';
-import { DRIVING_LESSONS, ROAD_TEST_ROUTE } from './DrivingTest.js';
-import { COURSE_TESTS } from './CourseTest.js';
+import { DRIVING_LESSONS, ROAD_TEST_ROUTE, PARKING_TEST } from './DrivingTest.js';
+import { OFFICIAL_COURSE_TEST, COURSE_TESTS } from './CourseTest.js';
 import { RaceManager } from './RaceManager.js';
+import { DrivingSchoolManager } from './DrivingSchoolManager.js';
 import { Checkpoint } from '../utilities/Checkpoint.js';
 
 export class MissionManager {
@@ -12,6 +13,7 @@ export class MissionManager {
     this.audio = audioManager;
     this.collisionSystem = collisionSystem;
     this.raceManager = new RaceManager(audioManager);
+    this.drivingSchoolManager = new DrivingSchoolManager(scene, gameState, audioManager, collisionSystem);
 
     this.activeMission = null;
     this.activeCheckpoints = [];
@@ -52,18 +54,28 @@ export class MissionManager {
 
     switch (mode) {
       case GameModes.DRIVING_SCHOOL:
-        this.activeMission = DRIVING_LESSONS[missionIndex] || DRIVING_LESSONS[0];
-        this.setupCheckpoints(this.activeMission.checkpoints);
+      case GameModes.PRACTICE:
+        this.activeMission = { title: 'Driving School: Practice Mode' };
+        this.drivingSchoolManager.startMode('PRACTICE', typeof missionIndex === 'object' ? missionIndex : {});
+        this.activeCheckpoints = this.drivingSchoolManager.checkpoints;
         break;
 
       case GameModes.ROAD_TEST:
         this.activeMission = ROAD_TEST_ROUTE;
-        this.setupCheckpoints(this.activeMission.checkpoints);
+        this.drivingSchoolManager.startMode('ROAD_TEST');
+        this.activeCheckpoints = ROAD_TEST_ROUTE.checkpoints;
         break;
 
       case GameModes.COURSE_TEST:
-        this.activeMission = COURSE_TESTS[missionIndex] || COURSE_TESTS[0];
-        this.setupCheckpoints(this.activeMission.checkpoints);
+        this.activeMission = OFFICIAL_COURSE_TEST;
+        this.drivingSchoolManager.startMode('COURSE_TEST');
+        this.activeCheckpoints = OFFICIAL_COURSE_TEST.checkpoints;
+        break;
+
+      case GameModes.PARKING_TEST:
+        this.activeMission = PARKING_TEST;
+        this.drivingSchoolManager.startMode('PARKING_TEST');
+        this.activeCheckpoints = PARKING_TEST.checkpoints;
         break;
 
       case GameModes.RACING_TRACK: {
@@ -121,7 +133,7 @@ export class MissionManager {
     });
   }
 
-  update(dt, vehiclePhysics, collisionSystem, racingTrack) {
+  update(dt, vehiclePhysics, collisionSystem, racingTrack, vehicleController = null, inputManager = null) {
     if (!vehiclePhysics) return null;
 
     const currentMode = this.gameState.currentMode;
@@ -238,7 +250,19 @@ export class MissionManager {
       };
     }
 
-    // 4. Mission-based modes (DRIVING_SCHOOL, ROAD_TEST, COURSE_TEST)
+    // 4. Dedicated Driving School Systems (PRACTICE, ROAD_TEST, PARKING_TEST, COURSE_TEST)
+    if (currentMode === GameModes.DRIVING_SCHOOL || currentMode === GameModes.PRACTICE || currentMode === GameModes.ROAD_TEST || currentMode === GameModes.PARKING_TEST || currentMode === GameModes.COURSE_TEST) {
+      const dsData = this.drivingSchoolManager.update(dt, vehiclePhysics, vehicleController, inputManager);
+      if (dsData) {
+        return {
+          mode: currentMode,
+          title: this.activeMission?.title || 'ROAD TEST',
+          ...dsData
+        };
+      }
+    }
+
+    // 5. Mission-based modes (COURSE_TEST)
     if (!this.activeMission || this.isCompleted || this.isFailed) {
       return {
         isCompleted: this.isCompleted,
@@ -316,5 +340,8 @@ export class MissionManager {
     this.checkpointMeshes = [];
     this.activeCheckpoints = [];
     this.currentCheckpointIndex = 0;
+    if (this.drivingSchoolManager) {
+      this.drivingSchoolManager.cleanupCheckpoints();
+    }
   }
 }

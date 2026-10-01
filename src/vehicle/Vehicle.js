@@ -138,13 +138,12 @@ export class Vehicle {
       underglow: false
     };
 
-    // 14. INDICATORS (left, right, hazard, blinking state, isOff)
+    // 14. INDICATORS (left, right, hazard, blinking state)
     this.indicators = {
       left: false,
       right: false,
       hazard: false,
-      blinking: false,
-      isOff: true
+      blinking: false
     };
 
     // 15. WIPERS (active, sweep angle, blade meshes)
@@ -154,9 +153,74 @@ export class Vehicle {
       blades: []
     });
 
-    // 16. DOORS (left mesh, right mesh, isOpen, progress, type: 'scissor'|'standard')
+    // 16. DOORS SYSTEM (frontLeft, frontRight, rearLeft, rearRight)
     const isScissor = this.type === 'apex_r' || this.type === 'apex_gt';
+    const hasDoors = this.type !== 'formula_r';
+    this.hasDoors = hasDoors;
+    this.isScissorDoor = isScissor;
+
     this.doors = {
+      frontLeft: {
+        id: 'frontLeft',
+        name: 'Front-Left Door',
+        side: 'left',
+        position: 'front',
+        isRear: false,
+        isOpen: false,
+        progress: 0,
+        targetProgress: 0,
+        group: null,
+        mesh: null,
+        supported: hasDoors,
+        maxAngle: MathUtils.degToRad(68),
+        type: isScissor ? 'scissor' : 'standard'
+      },
+      frontRight: {
+        id: 'frontRight',
+        name: 'Front-Right Door',
+        side: 'right',
+        position: 'front',
+        isRear: false,
+        isOpen: false,
+        progress: 0,
+        targetProgress: 0,
+        group: null,
+        mesh: null,
+        supported: hasDoors,
+        maxAngle: -MathUtils.degToRad(68),
+        type: isScissor ? 'scissor' : 'standard'
+      },
+      rearLeft: {
+        id: 'rearLeft',
+        name: 'Rear-Left Door',
+        side: 'left',
+        position: 'rear',
+        isRear: true,
+        isOpen: false,
+        progress: 0,
+        targetProgress: 0,
+        group: null,
+        mesh: null,
+        supported: hasDoors,
+        maxAngle: MathUtils.degToRad(62),
+        type: 'standard'
+      },
+      rearRight: {
+        id: 'rearRight',
+        name: 'Rear-Right Door',
+        side: 'right',
+        position: 'rear',
+        isRear: true,
+        isOpen: false,
+        progress: 0,
+        targetProgress: 0,
+        group: null,
+        mesh: null,
+        supported: hasDoors,
+        maxAngle: -MathUtils.degToRad(62),
+        type: 'standard'
+      },
+      // Backward compatibility aliases
       left: null,
       right: null,
       isOpen: false,
@@ -165,14 +229,56 @@ export class Vehicle {
     };
 
     // 17. BOOT (mesh, isOpen, progress - with trunk alias)
+    const hasBoot = this.type !== 'formula_r';
+    this.hasBoot = hasBoot;
     this.boot = {
       mesh: null,
       isOpen: false,
-      progress: 0
+      progress: 0,
+      supported: hasBoot
+    };
+
+    // CONVERTIBLE ROOF
+    this.isConvertible = this.type === 'aero_roadster' || this.type === 'venom_spyder';
+    this.roof = {
+      group: null,
+      isOpen: false,
+      progress: 0,
+      supported: this.isConvertible
     };
 
     // 18. CAMERA (vehicle-calibrated anchors: cockpit, hood, bumper, chase, orbit)
     this.camera = this.initCameraMounts(config.camera);
+
+    // MIRROR SYSTEM (Left side mirror, Right side mirror, Rear-view mirror)
+    const hasRearView = this.type !== 'formula_r';
+    this.mirrors = {
+      left: {
+        id: 'left',
+        name: 'Left Side Mirror',
+        group: null,
+        housing: null,
+        glass: null,
+        supported: true
+      },
+      right: {
+        id: 'right',
+        name: 'Right Side Mirror',
+        group: null,
+        housing: null,
+        glass: null,
+        supported: true
+      },
+      rearView: {
+        id: 'rearView',
+        name: 'Rear-View Mirror',
+        group: null,
+        housing: null,
+        glass: null,
+        supported: hasRearView
+      },
+      supported: true
+    };
 
     // Visual root group & chassis group
     this.group = new THREE.Group();
@@ -181,6 +287,10 @@ export class Vehicle {
 
     // Interactive animated parts
     this.wheels = [];
+    this.frontLeftDoor = null;
+    this.frontRightDoor = null;
+    this.rearLeftDoor = null;
+    this.rearRightDoor = null;
     this.leftDoor = null;
     this.rightDoor = null;
     this.trunk = null; // Alias for boot
@@ -217,9 +327,12 @@ export class Vehicle {
     this.leftIndicatorOn = false;
     this.rightIndicatorOn = false;
     this.hazardOn = false;
-    this.turnInProgress = null;
     this.indicatorBlinkTimer = 0;
+    this.indicatorBlinkRate = 0.33; // 1.5 Hz realistic interval (90 flashes/min)
     this.indicatorBlinkState = false;
+    this.turnEngaged = false;
+    this.turnPeakSteer = 0;
+    this.turnCancelledStalk = false;
     this.isSportMode = false;
 
     // Materials dictionary for live customization
@@ -1273,29 +1386,120 @@ export class Vehicle {
     this.isScissorDoor = isScissor;
     this.doors.type = isScissor ? 'scissor' : 'standard';
 
-    // Left door pivot
-    this.leftDoor = new THREE.Group();
-    this.leftDoor.position.set(0.9, 0.35, 0.6); // Front hinge point
-    const doorLGeom = new THREE.BoxGeometry(0.1, height, length * 0.6);
-    const doorL = new THREE.Mesh(doorLGeom, this.materials.paint);
-    doorL.position.set(0, 0.1, -length * 0.3);
-    this.leftDoor.add(doorL);
-    this.chassisGroup.add(this.leftDoor);
+    const halfW = width * 0.52;
+    const doorH = height * 0.88;
+    const frontL = length * 0.44;
+    const rearL = length * 0.42;
+    const frontZ = length * 0.26;
+    const rearZ = -length * 0.18;
 
-    // Right door pivot
-    this.rightDoor = new THREE.Group();
-    this.rightDoor.position.set(-0.9, 0.35, 0.6);
-    const doorRGeom = new THREE.BoxGeometry(0.1, height, length * 0.6);
-    const doorR = new THREE.Mesh(doorRGeom, this.materials.paint);
-    doorR.position.set(0, 0.1, -length * 0.3);
-    this.rightDoor.add(doorR);
-    this.chassisGroup.add(this.rightDoor);
+    // 1. FRONT-LEFT DOOR (Pivot at A-Pillar)
+    this.frontLeftDoor = new THREE.Group();
+    this.frontLeftDoor.position.set(halfW, 0.35, frontZ);
+    const doorFLGeom = new THREE.BoxGeometry(0.08, doorH, frontL);
+    const doorFLMesh = new THREE.Mesh(doorFLGeom, this.materials.paint);
+    doorFLMesh.position.set(0, 0.05, -frontL * 0.5);
+    doorFLMesh.castShadow = true;
+    this.frontLeftDoor.add(doorFLMesh);
 
-    this.doors.left = this.leftDoor;
-    this.doors.right = this.rightDoor;
+    // Front-Left Window Glass
+    const winFLGeom = new THREE.BoxGeometry(0.03, doorH * 0.42, frontL * 0.88);
+    const winFLMesh = new THREE.Mesh(winFLGeom, this.materials.glass);
+    winFLMesh.position.set(0, doorH * 0.52, -frontL * 0.5);
+    this.frontLeftDoor.add(winFLMesh);
+
+    // Front-Left Chrome Handle
+    const handleFLGeom = new THREE.BoxGeometry(0.035, 0.025, 0.12);
+    const handleFLMesh = new THREE.Mesh(handleFLGeom, this.materials.chrome);
+    handleFLMesh.position.set(0.045, 0.10, -frontL * 0.85);
+    this.frontLeftDoor.add(handleFLMesh);
+    this.chassisGroup.add(this.frontLeftDoor);
+
+    // 2. FRONT-RIGHT DOOR (Pivot at A-Pillar)
+    this.frontRightDoor = new THREE.Group();
+    this.frontRightDoor.position.set(-halfW, 0.35, frontZ);
+    const doorFRGeom = new THREE.BoxGeometry(0.08, doorH, frontL);
+    const doorFRMesh = new THREE.Mesh(doorFRGeom, this.materials.paint);
+    doorFRMesh.position.set(0, 0.05, -frontL * 0.5);
+    doorFRMesh.castShadow = true;
+    this.frontRightDoor.add(doorFRMesh);
+
+    // Front-Right Window Glass
+    const winFRGeom = new THREE.BoxGeometry(0.03, doorH * 0.42, frontL * 0.88);
+    const winFRMesh = new THREE.Mesh(winFRGeom, this.materials.glass);
+    winFRMesh.position.set(0, doorH * 0.52, -frontL * 0.5);
+    this.frontRightDoor.add(winFRMesh);
+
+    // Front-Right Chrome Handle
+    const handleFRGeom = new THREE.BoxGeometry(0.035, 0.025, 0.12);
+    const handleFRMesh = new THREE.Mesh(handleFRGeom, this.materials.chrome);
+    handleFRMesh.position.set(-0.045, 0.10, -frontL * 0.85);
+    this.frontRightDoor.add(handleFRMesh);
+    this.chassisGroup.add(this.frontRightDoor);
+
+    // 3. REAR-LEFT DOOR (Pivot at B-Pillar)
+    this.rearLeftDoor = new THREE.Group();
+    this.rearLeftDoor.position.set(halfW, 0.35, rearZ);
+    const doorRLGeom = new THREE.BoxGeometry(0.08, doorH * 0.94, rearL);
+    const doorRLMesh = new THREE.Mesh(doorRLGeom, this.materials.paint);
+    doorRLMesh.position.set(0, 0.05, -rearL * 0.5);
+    doorRLMesh.castShadow = true;
+    this.rearLeftDoor.add(doorRLMesh);
+
+    // Rear-Left Window Glass
+    const winRLGeom = new THREE.BoxGeometry(0.03, doorH * 0.38, rearL * 0.84);
+    const winRLMesh = new THREE.Mesh(winRLGeom, this.materials.glass);
+    winRLMesh.position.set(0, doorH * 0.48, -rearL * 0.5);
+    this.rearLeftDoor.add(winRLMesh);
+
+    // Rear-Left Chrome Handle
+    const handleRLGeom = new THREE.BoxGeometry(0.035, 0.025, 0.12);
+    const handleRLMesh = new THREE.Mesh(handleRLGeom, this.materials.chrome);
+    handleRLMesh.position.set(0.045, 0.10, -rearL * 0.82);
+    this.rearLeftDoor.add(handleRLMesh);
+    this.chassisGroup.add(this.rearLeftDoor);
+
+    // 4. REAR-RIGHT DOOR (Pivot at B-Pillar)
+    this.rearRightDoor = new THREE.Group();
+    this.rearRightDoor.position.set(-halfW, 0.35, rearZ);
+    const doorRRGeom = new THREE.BoxGeometry(0.08, doorH * 0.94, rearL);
+    const doorRRMesh = new THREE.Mesh(doorRRGeom, this.materials.paint);
+    doorRRMesh.position.set(0, 0.05, -rearL * 0.5);
+    doorRRMesh.castShadow = true;
+    this.rearRightDoor.add(doorRRMesh);
+
+    // Rear-Right Window Glass
+    const winRRGeom = new THREE.BoxGeometry(0.03, doorH * 0.38, rearL * 0.84);
+    const winRRMesh = new THREE.Mesh(winRRGeom, this.materials.glass);
+    winRRMesh.position.set(0, doorH * 0.48, -rearL * 0.5);
+    this.rearRightDoor.add(winRRMesh);
+
+    // Rear-Right Chrome Handle
+    const handleRRGeom = new THREE.BoxGeometry(0.035, 0.025, 0.12);
+    const handleRRMesh = new THREE.Mesh(handleRRGeom, this.materials.chrome);
+    handleRRMesh.position.set(-0.045, 0.10, -rearL * 0.82);
+    this.rearRightDoor.add(handleRRMesh);
+    this.chassisGroup.add(this.rearRightDoor);
+
+    // Store references in door objects
+    this.doors.frontLeft.group = this.frontLeftDoor;
+    this.doors.frontLeft.mesh = doorFLMesh;
+    this.doors.frontRight.group = this.frontRightDoor;
+    this.doors.frontRight.mesh = doorFRMesh;
+    this.doors.rearLeft.group = this.rearLeftDoor;
+    this.doors.rearLeft.mesh = doorRLMesh;
+    this.doors.rearRight.group = this.rearRightDoor;
+    this.doors.rearRight.mesh = doorRRMesh;
+
+    // Backward compatibility aliases
+    this.leftDoor = this.frontLeftDoor;
+    this.rightDoor = this.frontRightDoor;
+    this.doors.left = this.frontLeftDoor;
+    this.doors.right = this.frontRightDoor;
   }
 
   buildBoot(width, height, length, posZ) {
+    if (!this.hasBoot) return;
     this.bootGroup = new THREE.Group();
     this.bootGroup.position.set(0, 0.6, posZ + length * 0.5); // Hinge
     const bootMeshGeom = new THREE.BoxGeometry(width, height, length);
@@ -1431,18 +1635,100 @@ export class Vehicle {
     this.steeringWheel = steerGroup;
     this.chassisGroup.add(steerGroup);
 
-    // Rear-view mirror
-    const mirrorGeom = new THREE.BoxGeometry(0.28, 0.08, 0.04);
-    const mirrorMesh = new THREE.Mesh(mirrorGeom, this.materials.mirror);
-    mirrorMesh.position.set(0, 0.95, 0.68);
-    this.chassisGroup.add(mirrorMesh);
+    // Build Complete 3-Mirror System (Left, Right, Rear-view)
+    this.buildMirrors();
+  }
 
-    // Left and Right wing side mirrors
-    const sideMirrorL = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.09, 0.06), this.materials.mirror);
-    sideMirrorL.position.set(0.98, 0.72, 0.75);
-    const sideMirrorR = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.09, 0.06), this.materials.mirror);
-    sideMirrorR.position.set(-0.98, 0.72, 0.75);
-    this.chassisGroup.add(sideMirrorL, sideMirrorR);
+  buildMirrors(width = null, height = 0.72, length = 0.75) {
+    let effectiveWidth = width;
+    if (effectiveWidth === null) {
+      if (this.type === 'formula_r') effectiveWidth = 1.05;
+      else if (this.type === 'titan_4x4') effectiveWidth = 2.15;
+      else if (this.type === 'titan_sport') effectiveWidth = 2.05;
+      else if (this.type === 'apex_r' || this.type === 'apex_gt') effectiveWidth = 2.02;
+      else if (this.type === 'vortex_gt') effectiveWidth = 1.94;
+      else if (this.type === 'falcon_s1') effectiveWidth = 1.76;
+      else effectiveWidth = 1.88;
+    }
+    const halfW = effectiveWidth * 0.52;
+    const hasRearView = this.type !== 'formula_r';
+
+    // 1. LEFT SIDE MIRROR
+    const leftMirrorGroup = new THREE.Group();
+    leftMirrorGroup.position.set(halfW + 0.05, height, length);
+
+    const housingGeom = new THREE.BoxGeometry(0.18, 0.10, 0.12);
+    const housingL = new THREE.Mesh(housingGeom, this.materials.carbon || this.materials.paint);
+    leftMirrorGroup.add(housingL);
+
+    const glassGeom = new THREE.PlaneGeometry(0.16, 0.08);
+    const glassL = new THREE.Mesh(glassGeom, this.materials.mirror);
+    glassL.position.set(-0.01, 0, -0.062);
+    glassL.rotation.y = Math.PI - 0.14;
+    leftMirrorGroup.add(glassL);
+    this.chassisGroup.add(leftMirrorGroup);
+
+    // 2. RIGHT SIDE MIRROR
+    const rightMirrorGroup = new THREE.Group();
+    rightMirrorGroup.position.set(-halfW - 0.05, height, length);
+
+    const housingR = new THREE.Mesh(housingGeom, this.materials.carbon || this.materials.paint);
+    rightMirrorGroup.add(housingR);
+
+    const glassR = new THREE.Mesh(glassGeom, this.materials.mirror);
+    glassR.position.set(0.01, 0, -0.062);
+    glassR.rotation.y = Math.PI + 0.14;
+    rightMirrorGroup.add(glassR);
+    this.chassisGroup.add(rightMirrorGroup);
+
+    // 3. REAR-VIEW MIRROR (Central Windshield / Cockpit)
+    let rearViewMirrorGroup = null;
+    let housingRear = null;
+    let glassRear = null;
+
+    if (hasRearView) {
+      rearViewMirrorGroup = new THREE.Group();
+      rearViewMirrorGroup.position.set(0, height + 0.24, length - 0.07);
+
+      const rvHousingGeom = new THREE.BoxGeometry(0.28, 0.08, 0.04);
+      housingRear = new THREE.Mesh(rvHousingGeom, this.materials.carbon);
+      rearViewMirrorGroup.add(housingRear);
+
+      const rvGlassGeom = new THREE.PlaneGeometry(0.26, 0.065);
+      glassRear = new THREE.Mesh(rvGlassGeom, this.materials.mirror);
+      glassRear.position.set(0, 0, -0.022);
+      glassRear.rotation.y = Math.PI;
+      rearViewMirrorGroup.add(glassRear);
+      this.chassisGroup.add(rearViewMirrorGroup);
+    }
+
+    this.mirrors = {
+      left: {
+        id: 'left',
+        name: 'Left Side Mirror',
+        group: leftMirrorGroup,
+        housing: housingL,
+        glass: glassL,
+        supported: true
+      },
+      right: {
+        id: 'right',
+        name: 'Right Side Mirror',
+        group: rightMirrorGroup,
+        housing: housingR,
+        glass: glassR,
+        supported: true
+      },
+      rearView: {
+        id: 'rearView',
+        name: 'Rear-View Mirror',
+        group: rearViewMirrorGroup,
+        housing: housingRear,
+        glass: glassRear,
+        supported: hasRearView
+      },
+      supported: true
+    };
   }
 
   buildLights() {
@@ -1566,26 +1852,26 @@ export class Vehicle {
       physics = null;
     }
 
-    if (physics) {
+    if (physics && typeof physics === 'object') {
       // 1. POSITION
       if (physics.position) this.position.copy(physics.position);
 
       // 2. ROTATION
-      if (physics.rotation) this.rotation.copy(physics.rotation);
-      if (physics.quaternion) this.quaternion.copy(physics.quaternion);
-      if (physics.heading !== undefined) this.heading = physics.heading;
-      if (physics.pitch !== undefined) this.pitch = physics.pitch;
-      if (physics.roll !== undefined) this.roll = physics.roll;
+      this.rotation.copy(physics.rotation);
+      this.quaternion.copy(physics.quaternion);
+      this.heading = physics.heading;
+      this.pitch = physics.pitch;
+      this.roll = physics.roll;
 
       // 3. SPEED
-      if (physics.speed !== undefined) this.speed = physics.speed;
-      if (physics.speedKmh !== undefined) this.speedKmh = physics.speedKmh;
-      if (physics.forwardSpeed !== undefined) this.forwardSpeed = physics.forwardSpeed;
-      if (physics.lateralSpeed !== undefined) this.lateralSpeed = physics.lateralSpeed;
+      this.speed = physics.speed;
+      this.speedKmh = physics.speedKmh;
+      this.forwardSpeed = physics.forwardSpeed;
+      this.lateralSpeed = physics.lateralSpeed;
 
       // 4. ACCELERATION
-      if (physics.acceleration) this.acceleration.copy(physics.acceleration);
-      if (physics.accelerationRate !== undefined) this.accelerationRate = physics.accelerationRate;
+      this.acceleration.copy(physics.acceleration);
+      this.accelerationRate = physics.accelerationRate;
 
       // 5. BRAKING
       this.braking = physics.braking !== undefined ? physics.braking : 0;
@@ -1708,50 +1994,60 @@ export class Vehicle {
       });
     }
 
-    // 14. INDICATORS SYSTEM: Realistic Blinking (1.47 Hz) & Automatic Turn Cancellation
+    // 14. INDICATORS blinking (Realistic 1.5 Hz interval, 90 flashes/min) & Auto Turn Cancellation
     const anyIndicatorActive = this.leftIndicatorOn || this.rightIndicatorOn || this.hazardOn;
     if (anyIndicatorActive) {
       this.indicatorBlinkTimer += dt;
-      if (this.indicatorBlinkTimer >= 0.34) {
+      if (this.indicatorBlinkTimer >= this.indicatorBlinkRate) {
         this.indicatorBlinkTimer = 0;
         this.indicatorBlinkState = !this.indicatorBlinkState;
       }
     } else {
       this.indicatorBlinkTimer = 0;
       this.indicatorBlinkState = false;
-      this.turnInProgress = null;
     }
 
-    // Automatic turn signal cancellation after completing a turn (SAE/ECE compliant)
-    // Note: Hazard flashers NEVER auto-cancel on steering
-    if (!this.hazardOn && physics) {
-      const steer = physics.steerAngle || 0;
+    // Auto-cancellation after completing a turn (Left / Right, never Hazard)
+    if (!this.hazardOn && (this.leftIndicatorOn || this.rightIndicatorOn)) {
+      const steer = this.steerAngle;
+      const speed = Math.abs(this.forwardSpeed);
+
       if (this.leftIndicatorOn) {
-        if (steer > 0.16) {
-          // Entering turn: wheel steered into left corner
-          this.turnInProgress = 'left';
-        } else if (this.turnInProgress === 'left' && steer < 0.05) {
-          // Exiting turn: wheel straightened back to center -> auto cancel
-          this.leftIndicatorOn = false;
-          this.turnInProgress = null;
-          this.syncIndicators();
-          if (this.onIndicatorAutoCancel) this.onIndicatorAutoCancel('left');
+        // Step 1: Detect turn engagement
+        if (steer < -0.10) {
+          this.turnEngaged = true;
+          this.turnPeakSteer = Math.min(this.turnPeakSteer || 0, steer);
+        }
+        // Step 2: Detect turn completion when wheel straightens back towards center
+        if (this.turnEngaged && this.turnPeakSteer < -0.14 && steer >= -0.035 && speed > 0.4) {
+          this.turnOffIndicators();
+          this.turnCancelledStalk = true;
+          this.turnEngaged = false;
+          this.turnPeakSteer = 0;
         }
       } else if (this.rightIndicatorOn) {
-        if (steer < -0.16) {
-          // Entering turn: wheel steered into right corner
-          this.turnInProgress = 'right';
-        } else if (this.turnInProgress === 'right' && steer > -0.05) {
-          // Exiting turn: wheel straightened back to center -> auto cancel
-          this.rightIndicatorOn = false;
-          this.turnInProgress = null;
-          this.syncIndicators();
-          if (this.onIndicatorAutoCancel) this.onIndicatorAutoCancel('right');
+        // Step 1: Detect turn engagement
+        if (steer > 0.10) {
+          this.turnEngaged = true;
+          this.turnPeakSteer = Math.max(this.turnPeakSteer || 0, steer);
+        }
+        // Step 2: Detect turn completion when wheel straightens back towards center
+        if (this.turnEngaged && this.turnPeakSteer > 0.14 && steer <= 0.035 && speed > 0.4) {
+          this.turnOffIndicators();
+          this.turnCancelledStalk = true;
+          this.turnEngaged = false;
+          this.turnPeakSteer = 0;
         }
       }
+    } else {
+      this.turnEngaged = false;
+      this.turnPeakSteer = 0;
     }
 
-    this.syncIndicators();
+    this.indicators.left = this.leftIndicatorOn;
+    this.indicators.right = this.rightIndicatorOn;
+    this.indicators.hazard = this.hazardOn;
+    this.indicators.blinking = this.indicatorBlinkState;
 
     const showLeft = (this.leftIndicatorOn || this.hazardOn) && this.indicatorBlinkState;
     const showRight = (this.rightIndicatorOn || this.hazardOn) && this.indicatorBlinkState;
@@ -1769,44 +2065,77 @@ export class Vehicle {
     this.wipers.active = this.wipersActive;
     this.wipers.angle = this.wiperAngle;
 
-    // 16. DOORS animation
-    const targetDoorProgress = this.doorsOpen ? 1 : 0;
-    this.doorAnimProgress = MathUtils.damp(this.doorAnimProgress, targetDoorProgress, 5, dt);
-    this.doors.isOpen = this.doorsOpen;
-    this.doors.progress = this.doorAnimProgress;
+    // 16. DOORS ANIMATION (Smooth per-door damped transitions for all 4 doors)
+    const doorKeys = ['frontLeft', 'frontRight', 'rearLeft', 'rearRight'];
+    let sumProgress = 0;
+    let anyDoorOpen = false;
 
-    if (this.leftDoor && this.rightDoor) {
-      if (this.doors.type === 'scissor' || this.isScissorDoor) {
-        this.leftDoor.rotation.x = -this.doorAnimProgress * 0.95;
-        this.leftDoor.rotation.y = this.doorAnimProgress * 0.25;
-        this.rightDoor.rotation.x = -this.doorAnimProgress * 0.95;
-        this.rightDoor.rotation.y = -this.doorAnimProgress * 0.25;
-      } else {
-        this.leftDoor.rotation.y = this.doorAnimProgress * 0.9;
-        this.rightDoor.rotation.y = -this.doorAnimProgress * 0.9;
+    for (const key of doorKeys) {
+      const door = this.doors[key];
+      if (!door) continue;
+
+      if (door.isOpen) anyDoorOpen = true;
+
+      const target = door.isOpen ? 1.0 : 0.0;
+      door.targetProgress = target;
+      door.progress = MathUtils.damp(door.progress, target, 5.0, dt);
+      if (Math.abs(door.progress - target) < 0.005) {
+        door.progress = target;
+      }
+      sumProgress += door.progress;
+
+      if (door.group) {
+        if (door.type === 'scissor' || (this.isScissorDoor && !door.isRear)) {
+          // Dihedral scissor doors swing upward and slightly outward
+          const mult = door.side === 'left' ? 1 : -1;
+          door.group.rotation.x = -door.progress * 0.95;
+          door.group.rotation.y = mult * door.progress * 0.25;
+          door.group.rotation.z = mult * door.progress * 0.12;
+        } else {
+          // Standard outward swinging door around Y-axis
+          door.group.rotation.y = door.progress * door.maxAngle;
+        }
       }
     }
 
-    // 17. BOOT / TRUNK animation
-    const targetBootProgress = this.bootOpen ? 1 : 0;
-    this.bootAnimProgress = MathUtils.damp(this.bootAnimProgress, targetBootProgress, 5, dt);
+    this.doorAnimProgress = sumProgress / 4;
+    this.doors.progress = this.doorAnimProgress;
+    this.doors.isOpen = anyDoorOpen;
+    this.doorsOpen = anyDoorOpen;
+
+    // 17. BOOT / TRUNK animation (Smooth damped angular interpolation)
+    const targetBootProgress = this.bootOpen ? 1.0 : 0.0;
+    this.bootAnimProgress = MathUtils.damp(this.bootAnimProgress, targetBootProgress, 5.0, dt);
+    if (Math.abs(this.bootAnimProgress - targetBootProgress) < 0.005) {
+      this.bootAnimProgress = targetBootProgress;
+    }
     this.trunkAnimProgress = this.bootAnimProgress;
     this.boot.isOpen = this.bootOpen;
     this.boot.progress = this.bootAnimProgress;
 
-    const bootTarget = this.bootGroup || this.trunk;
+    const bootTarget = this.bootGroup || this.trunk || (this.boot ? this.boot.mesh : null);
     if (bootTarget) {
-      bootTarget.rotation.x = -this.bootAnimProgress * 0.9;
+      bootTarget.rotation.x = this.bootAnimProgress === 0 ? 0 : -this.bootAnimProgress * 0.9;
     }
 
-    // Convertible Roof animation
-    if (this.roofGroup) {
-      const targetRoof = this.roofOpen ? 1 : 0;
+    // CONVERTIBLE ROOF animation (Smooth folding kinematics into rear deck)
+    if (this.isConvertible) {
+      const targetRoof = this.roofOpen ? 1.0 : 0.0;
       this.roofAnimProgress = MathUtils.damp(this.roofAnimProgress, targetRoof, 3.5, dt);
-      this.roofGroup.rotation.x = this.roofAnimProgress * 1.85;
-      this.roofGroup.position.y = 0.55 - this.roofAnimProgress * 0.35;
-      this.roofGroup.position.z = -0.65 - this.roofAnimProgress * 0.45;
-      this.roofGroup.scale.setScalar(1 - this.roofAnimProgress * 0.2);
+      if (Math.abs(this.roofAnimProgress - targetRoof) < 0.005) {
+        this.roofAnimProgress = targetRoof;
+      }
+      if (this.roof) {
+        this.roof.isOpen = this.roofOpen;
+        this.roof.progress = this.roofAnimProgress;
+      }
+
+      if (this.roofGroup) {
+        this.roofGroup.rotation.x = this.roofAnimProgress === 0 ? 0 : this.roofAnimProgress * 1.85;
+        this.roofGroup.position.y = 0.55 - this.roofAnimProgress * 0.35;
+        this.roofGroup.position.z = -0.65 - this.roofAnimProgress * 0.45;
+        this.roofGroup.scale.setScalar(1.0 - this.roofAnimProgress * 0.2);
+      }
     }
   }
 
@@ -2049,83 +2378,68 @@ export class Vehicle {
     return this.indicators;
   }
 
-  setLeftIndicator(on = true) {
-    if (on) {
+  getIndicatorState() {
+    if (this.hazardOn) return 'HAZARD';
+    if (this.leftIndicatorOn) return 'LEFT';
+    if (this.rightIndicatorOn) return 'RIGHT';
+    return 'OFF';
+  }
+
+  setIndicatorState(state) {
+    const s = String(state || 'OFF').toUpperCase().trim();
+    if (s === 'LEFT') {
       this.leftIndicatorOn = true;
       this.rightIndicatorOn = false;
-      this.indicatorBlinkTimer = 0;
-      this.indicatorBlinkState = true;
-    } else {
-      this.leftIndicatorOn = false;
-    }
-    this.turnInProgress = null;
-    this.syncIndicators();
-    return this.leftIndicatorOn;
-  }
-
-  setRightIndicator(on = true) {
-    if (on) {
+      this.hazardOn = false;
+    } else if (s === 'RIGHT') {
       this.rightIndicatorOn = true;
       this.leftIndicatorOn = false;
-      this.indicatorBlinkTimer = 0;
-      this.indicatorBlinkState = true;
-    } else {
+      this.hazardOn = false;
+    } else if (s === 'HAZARD') {
+      this.hazardOn = true;
+      this.leftIndicatorOn = false;
       this.rightIndicatorOn = false;
+    } else {
+      // OFF
+      this.leftIndicatorOn = false;
+      this.rightIndicatorOn = false;
+      this.hazardOn = false;
     }
-    this.turnInProgress = null;
-    this.syncIndicators();
-    return this.rightIndicatorOn;
-  }
 
-  setHazard(on = true) {
-    this.hazardOn = !!on;
-    if (this.hazardOn) {
-      this.indicatorBlinkTimer = 0;
-      this.indicatorBlinkState = true;
-    }
-    this.syncIndicators();
-    return this.hazardOn;
+    this.turnEngaged = false;
+    this.turnPeakSteer = 0;
+    this.indicators.left = this.leftIndicatorOn;
+    this.indicators.right = this.rightIndicatorOn;
+    this.indicators.hazard = this.hazardOn;
+    return this.getIndicatorState();
   }
 
   turnOffIndicators() {
-    this.leftIndicatorOn = false;
-    this.rightIndicatorOn = false;
-    this.hazardOn = false;
-    this.turnInProgress = null;
-    this.indicatorBlinkState = false;
-    this.indicatorBlinkTimer = 0;
-    this.syncIndicators();
-    if (this.indicatorLeftMeshes) this.indicatorLeftMeshes.forEach(m => m.visible = false);
-    if (this.indicatorRightMeshes) this.indicatorRightMeshes.forEach(m => m.visible = false);
-    return true;
+    return this.setIndicatorState('OFF');
   }
 
   toggleLeftIndicator() {
     if (this.leftIndicatorOn) {
-      return this.setLeftIndicator(false);
+      return this.setIndicatorState('OFF');
     } else {
-      return this.setLeftIndicator(true);
+      return this.setIndicatorState('LEFT');
     }
   }
 
   toggleRightIndicator() {
     if (this.rightIndicatorOn) {
-      return this.setRightIndicator(false);
+      return this.setIndicatorState('OFF');
     } else {
-      return this.setRightIndicator(true);
+      return this.setIndicatorState('RIGHT');
     }
   }
 
   toggleHazard() {
-    return this.setHazard(!this.hazardOn);
-  }
-
-  syncIndicators() {
-    this.indicators.left = this.leftIndicatorOn;
-    this.indicators.right = this.rightIndicatorOn;
-    this.indicators.hazard = this.hazardOn;
-    this.indicators.blinking = this.indicatorBlinkState;
-    this.indicators.isOff = !this.leftIndicatorOn && !this.rightIndicatorOn && !this.hazardOn;
+    if (this.hazardOn) {
+      return this.setIndicatorState('OFF');
+    } else {
+      return this.setIndicatorState('HAZARD');
+    }
   }
 
   // 15. WIPERS
@@ -2145,42 +2459,180 @@ export class Vehicle {
     return this.wipersActive;
   }
 
-  // 16. DOORS
+  // 16. DOOR SYSTEM (FRONT-LEFT, FRONT-RIGHT, REAR-LEFT, REAR-RIGHT)
+  normalizeDoorKey(key) {
+    if (!key) return null;
+    const k = String(key).toLowerCase().replace(/[-_\s]/g, '');
+    if (k === 'frontleft' || k === 'fl' || k === 'doorfl' || k === 'leftfront') return 'frontLeft';
+    if (k === 'frontright' || k === 'fr' || k === 'doorfr' || k === 'rightfront') return 'frontRight';
+    if (k === 'rearleft' || k === 'rl' || k === 'doorrl' || k === 'leftrear' || k === 'backleft') return 'rearLeft';
+    if (k === 'rearright' || k === 'rr' || k === 'doorrr' || k === 'rightrear' || k === 'backright') return 'rearRight';
+    if (k === 'left' || k === 'driver') return 'frontLeft';
+    if (k === 'right' || k === 'passenger') return 'frontRight';
+    return null;
+  }
+
+  isDoorSupported(key) {
+    if (!this.hasDoors) return false;
+    const norm = this.normalizeDoorKey(key);
+    return Boolean(norm && this.doors[norm] && this.doors[norm].supported);
+  }
+
+  openDoor(key) {
+    const norm = this.normalizeDoorKey(key);
+    if (!norm || !this.doors[norm] || !this.doors[norm].supported) return false;
+    const door = this.doors[norm];
+    door.isOpen = true;
+    door.targetProgress = 1.0;
+    this.updateGlobalDoorStatus();
+    return true;
+  }
+
+  closeDoor(key) {
+    const norm = this.normalizeDoorKey(key);
+    if (!norm || !this.doors[norm] || !this.doors[norm].supported) return false;
+    const door = this.doors[norm];
+    door.isOpen = false;
+    door.targetProgress = 0.0;
+    this.updateGlobalDoorStatus();
+    return false;
+  }
+
+  toggleDoor(key) {
+    const norm = this.normalizeDoorKey(key);
+    if (!norm || !this.doors[norm] || !this.doors[norm].supported) return false;
+    if (this.doors[norm].isOpen) {
+      this.closeDoor(norm);
+      return false;
+    } else {
+      this.openDoor(norm);
+      return true;
+    }
+  }
+
+  getDoorState(key) {
+    const norm = this.normalizeDoorKey(key);
+    if (!norm || !this.doors[norm]) return null;
+    const d = this.doors[norm];
+    return {
+      id: d.id,
+      name: d.name,
+      isOpen: d.isOpen,
+      progress: d.progress,
+      targetProgress: d.targetProgress,
+      angle: d.group ? (d.group.rotation.y || d.group.rotation.x || 0) : 0,
+      supported: !!d.supported,
+      type: d.type
+    };
+  }
+
+  getAllDoorStates() {
+    const keys = ['frontLeft', 'frontRight', 'rearLeft', 'rearRight'];
+    const result = {};
+    let allOpen = true;
+    let anyOpen = false;
+    for (const k of keys) {
+      const state = this.getDoorState(k);
+      result[k] = state;
+      if (state && state.supported) {
+        if (state.isOpen) anyOpen = true;
+        else allOpen = false;
+      }
+    }
+    result.anyOpen = anyOpen;
+    result.allOpen = anyOpen && allOpen;
+    return result;
+  }
+
+  // Front-Left Door Methods
+  openFrontLeftDoor() { return this.openDoor('frontLeft'); }
+  closeFrontLeftDoor() { return this.closeDoor('frontLeft'); }
+  toggleFrontLeftDoor() { return this.toggleDoor('frontLeft'); }
+
+  // Front-Right Door Methods
+  openFrontRightDoor() { return this.openDoor('frontRight'); }
+  closeFrontRightDoor() { return this.closeDoor('frontRight'); }
+  toggleFrontRightDoor() { return this.toggleDoor('frontRight'); }
+
+  // Rear-Left Door Methods
+  openRearLeftDoor() { return this.openDoor('rearLeft'); }
+  closeRearLeftDoor() { return this.closeDoor('rearLeft'); }
+  toggleRearLeftDoor() { return this.toggleDoor('rearLeft'); }
+
+  // Rear-Right Door Methods
+  openRearRightDoor() { return this.openDoor('rearRight'); }
+  closeRearRightDoor() { return this.closeDoor('rearRight'); }
+  toggleRearRightDoor() { return this.toggleDoor('rearRight'); }
+
+  // Global All-Door Operations
+  openAllDoors() {
+    ['frontLeft', 'frontRight', 'rearLeft', 'rearRight'].forEach(k => this.openDoor(k));
+    return true;
+  }
+
+  closeAllDoors() {
+    ['frontLeft', 'frontRight', 'rearLeft', 'rearRight'].forEach(k => this.closeDoor(k));
+    return false;
+  }
+
+  toggleAllDoors() {
+    if (this.doors.isOpen) {
+      return this.closeAllDoors();
+    } else {
+      return this.openAllDoors();
+    }
+  }
+
+  updateGlobalDoorStatus() {
+    const anyOpen = Boolean(
+      (this.doors.frontLeft && this.doors.frontLeft.isOpen) ||
+      (this.doors.frontRight && this.doors.frontRight.isOpen) ||
+      (this.doors.rearLeft && this.doors.rearLeft.isOpen) ||
+      (this.doors.rearRight && this.doors.rearRight.isOpen)
+    );
+    this.doorsOpen = anyOpen;
+    this.doors.isOpen = anyOpen;
+  }
+
   getDoors() {
     return this.doors;
   }
 
   toggleDoors() {
-    this.doorsOpen = !this.doorsOpen;
-    this.doors.isOpen = this.doorsOpen;
-    return this.doorsOpen;
+    return this.toggleAllDoors();
   }
 
   openDoors() {
-    this.doorsOpen = true;
-    this.doors.isOpen = true;
-    return true;
+    return this.openAllDoors();
   }
 
   closeDoors() {
-    this.doorsOpen = false;
-    this.doors.isOpen = false;
-    return false;
+    return this.closeAllDoors();
   }
 
-  // 17. BOOT (with Trunk aliases)
+  // 17. BOOT / TRUNK SYSTEM (OPEN BOOT, CLOSE BOOT, TOGGLE BOOT)
+  isBootSupported() {
+    return Boolean(this.hasBoot && this.type !== 'formula_r');
+  }
+
+  isTrunkSupported() {
+    return this.isBootSupported();
+  }
+
   getBoot() {
     return this.boot;
   }
 
-  toggleBoot() {
-    this.bootOpen = !this.bootOpen;
-    this.trunkOpen = this.bootOpen;
-    this.boot.isOpen = this.bootOpen;
-    return this.bootOpen;
+  getBootState() {
+    return {
+      isOpen: Boolean(this.bootOpen),
+      progress: this.bootAnimProgress,
+      supported: this.isBootSupported()
+    };
   }
 
   openBoot() {
+    if (!this.isBootSupported()) return false;
     this.bootOpen = true;
     this.trunkOpen = true;
     this.boot.isOpen = true;
@@ -2188,14 +2640,20 @@ export class Vehicle {
   }
 
   closeBoot() {
+    if (!this.isBootSupported()) return false;
     this.bootOpen = false;
     this.trunkOpen = false;
     this.boot.isOpen = false;
     return false;
   }
 
-  toggleTrunk() {
-    return this.toggleBoot();
+  toggleBoot() {
+    if (!this.isBootSupported()) return false;
+    if (this.bootOpen) {
+      return this.closeBoot();
+    } else {
+      return this.openBoot();
+    }
   }
 
   openTrunk() {
@@ -2204,6 +2662,10 @@ export class Vehicle {
 
   closeTrunk() {
     return this.closeBoot();
+  }
+
+  toggleTrunk() {
+    return this.toggleBoot();
   }
 
   // 18. CAMERA
@@ -2215,11 +2677,80 @@ export class Vehicle {
     return this.camera[mode] || this.camera.chase;
   }
 
-  // Other features
+  // CONVERTIBLE ROOF SYSTEM (OPEN ROOF, CLOSE ROOF, TOGGLE ROOF)
+  isConvertibleVehicle() {
+    return Boolean(this.isConvertible);
+  }
+
+  isRoofSupported() {
+    return Boolean(this.isConvertible);
+  }
+
+  openRoof() {
+    if (!this.isConvertible) return false;
+    this.roofOpen = true;
+    if (this.roof) this.roof.isOpen = true;
+    return true;
+  }
+
+  closeRoof() {
+    if (!this.isConvertible) return false;
+    this.roofOpen = false;
+    if (this.roof) this.roof.isOpen = false;
+    return false;
+  }
+
   toggleRoof() {
     if (!this.isConvertible) return false;
-    this.roofOpen = !this.roofOpen;
-    return this.roofOpen;
+    if (this.roofOpen) {
+      return this.closeRoof();
+    } else {
+      return this.openRoof();
+    }
+  }
+
+  getRoofState() {
+    return {
+      isOpen: Boolean(this.roofOpen),
+      progress: this.roofAnimProgress,
+      isConvertible: Boolean(this.isConvertible),
+      supported: Boolean(this.isConvertible)
+    };
+  }
+
+  // MIRROR SYSTEM (Left side mirror, Right side mirror, Rear-view mirror)
+  isMirrorSupported(type = 'all') {
+    if (!this.mirrors) return false;
+    if (type === 'left') return Boolean(this.mirrors.left && this.mirrors.left.supported);
+    if (type === 'right') return Boolean(this.mirrors.right && this.mirrors.right.supported);
+    if (type === 'rearView' || type === 'rear') return Boolean(this.mirrors.rearView && this.mirrors.rearView.supported);
+    return Boolean(this.mirrors.supported);
+  }
+
+  getMirrors() {
+    return this.mirrors;
+  }
+
+  getMirrorState() {
+    return {
+      supported: this.isMirrorSupported('all'),
+      left: this.isMirrorSupported('left'),
+      right: this.isMirrorSupported('right'),
+      rearView: this.isMirrorSupported('rearView')
+    };
+  }
+
+  setMirrorMaterial(material) {
+    if (!material || !this.mirrors) return;
+    if (this.mirrors.left && this.mirrors.left.glass) {
+      this.mirrors.left.glass.material = material;
+    }
+    if (this.mirrors.right && this.mirrors.right.glass) {
+      this.mirrors.right.glass.material = material;
+    }
+    if (this.mirrors.rearView && this.mirrors.rearView.glass) {
+      this.mirrors.rearView.glass.material = material;
+    }
   }
 
   toggleSportMode() {

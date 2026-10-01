@@ -4,11 +4,12 @@ import { GameStates, GameModes } from '../core/GameState.js';
  * Cinematic Automotive Main Menu with vehicle preview, glassmorphic panels, and sound effects
  */
 export class MainMenu {
-  constructor(container, gameState, audioManager, onPlayModeSelected) {
+  constructor(container, gameState, audioManager, onPlayModeSelected, onOpenDrivingSchool = null) {
     this.container = container;
     this.gameState = gameState;
     this.audio = audioManager;
     this.onPlayModeSelected = onPlayModeSelected;
+    this.onOpenDrivingSchool = onOpenDrivingSchool;
 
     this.root = null;
     this.modeSelectorModal = null;
@@ -266,6 +267,12 @@ export class MainMenu {
 
         if (mode === GameModes.RACING_TRACK) {
           raceModal.style.display = 'flex';
+        } else if (mode === GameModes.DRIVING_SCHOOL) {
+          if (this.onOpenDrivingSchool) {
+            this.onOpenDrivingSchool();
+          } else {
+            this.onPlayModeSelected(mode);
+          }
         } else {
           this.onPlayModeSelected(mode);
         }
@@ -299,7 +306,11 @@ export class MainMenu {
 
     schoolBtn.addEventListener('click', () => {
       this.audio.playUIClick();
-      this.onPlayModeSelected(GameModes.DRIVING_SCHOOL);
+      if (this.onOpenDrivingSchool) {
+        this.onOpenDrivingSchool();
+      } else {
+        this.onPlayModeSelected(GameModes.DRIVING_SCHOOL);
+      }
     });
 
     racingBtn.addEventListener('click', () => {

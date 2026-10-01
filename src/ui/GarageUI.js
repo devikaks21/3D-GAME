@@ -193,7 +193,7 @@ export class GarageUI {
             <div class="mechanics-btns-grid">
               <button class="mech-btn glass-btn" id="btn-g-doors">DOORS</button>
               <button class="mech-btn glass-btn" id="btn-g-trunk">BOOT</button>
-              <button class="mech-btn glass-btn" id="btn-g-roof">ROOF (SPYDER)</button>
+              <button class="mech-btn glass-btn" id="btn-g-roof">ROOF</button>
               <button class="mech-btn glass-btn" id="btn-g-lights">HEADLIGHTS</button>
             </div>
           </div>
@@ -331,8 +331,19 @@ export class GarageUI {
     this.root.querySelector('#spec-braking').textContent = dStats.braking;
     this.root.querySelector('#spec-weight').textContent = dStats.weight;
 
+    const isConvertible = (car.id === 'aero_roadster' || car.id === 'venom_spyder');
     const roofBtn = this.root.querySelector('#btn-g-roof');
-    roofBtn.style.opacity = (car.id === 'aero_roadster' || car.id === 'venom_spyder') ? '1' : '0.4';
+    if (roofBtn) {
+      roofBtn.style.display = isConvertible ? 'inline-block' : 'none';
+      roofBtn.textContent = 'ROOF';
+    }
+
+    const hasBoot = car.id !== 'formula_r';
+    const trunkBtn = this.root.querySelector('#btn-g-trunk');
+    if (trunkBtn) {
+      trunkBtn.style.display = hasBoot ? 'inline-block' : 'none';
+      trunkBtn.textContent = 'BOOT';
+    }
 
     // Synchronize all customization controls with vehicle platform support
     this.updateCustomizationControls(carId);
@@ -657,14 +668,20 @@ export class GarageUI {
 
     this.root.querySelector('#btn-g-trunk').addEventListener('click', () => {
       const v = this.vehicleManager.getActiveVehicle();
-      if (v) v.toggleTrunk();
-      this.audio.playUIClick();
+      if (v && v.isBootSupported && v.isBootSupported()) {
+        const isOpen = v.toggleBoot();
+        const trunkBtn = this.root.querySelector('#btn-g-trunk');
+        if (trunkBtn) trunkBtn.textContent = isOpen ? 'BOOT: OPEN' : 'BOOT: CLOSED';
+        this.audio.playUIClick();
+      }
     });
 
     this.root.querySelector('#btn-g-roof').addEventListener('click', () => {
       const v = this.vehicleManager.getActiveVehicle();
       if (v && v.isConvertible) {
-        v.toggleRoof();
+        const isOpen = v.toggleRoof();
+        const roofBtn = this.root.querySelector('#btn-g-roof');
+        if (roofBtn) roofBtn.textContent = isOpen ? 'ROOF: OPEN' : 'ROOF: CLOSED';
         this.audio.playUIClick();
       }
     });

@@ -51,6 +51,9 @@ export class VehiclePhysics {
     this.maxSteerAngle = MathUtils.degToRad(35);
     this.steerSpeed = this.handling.steeringSpeed || 3.5;
 
+    // Driving assistance ('off' | 'tcs' | 'full')
+    this.drivingAssistance = 'tcs';
+
     // Transmission (P, R, N, 1, 2, 3, 4, 5, 6)
     this.transmissionMode = 'auto'; // 'auto' | 'manual'
     this.isSportMode = false;
@@ -73,6 +76,11 @@ export class VehiclePhysics {
     this.groundHeight = 0;
     this.airTime = 0;
 
+    // Collision & Anti-stuck states
+    this.isColliding = false;
+    this.lastCollision = null;
+    this.stuckTimer = 0;
+
     // Vectors
     this._forward = new THREE.Vector3(0, 0, 1);
     this._right = new THREE.Vector3(1, 0, 0);
@@ -83,7 +91,7 @@ export class VehiclePhysics {
     return this.gearNames[this.currentGear] || '1';
   }
 
-  update(inputs, dt, collisionSystem) {
+  update(inputs, dt, collisionSystem = null, trafficCars = []) {
     if (dt <= 0) return;
     dt = Math.min(dt, 0.05); // prevent large delta spikes
 
@@ -135,6 +143,12 @@ export class VehiclePhysics {
       const currentCap = gearSpeedCaps[this.currentGear] || this.maxSpeed;
       if (this.speedKmh >= currentCap) {
         engineForce = 0;
+      }
+
+      // Driving Assistance: Traction Control (TCS)
+      if ((this.drivingAssistance === 'tcs' || this.drivingAssistance === 'full') && this.slipRatio > 0.35) {
+        const slipExcess = Math.min(1.0, (this.slipRatio - 0.35) * 2.0);
+        engineForce *= (1.0 - slipExcess * 0.65);
       }
     }
 
@@ -265,7 +279,13 @@ export class VehiclePhysics {
 
       // Lateral friction damping (resist sliding sideways based on front/rear traction)
       const latDamp = Math.pow(lateralFriction, dt * 60);
-      this.velocity.sub(rightVec.multiplyScalar(this.lateralSpeed * (1 - latDamp)));
+      this.velocity.sub(rightVec.clone().multiplyScalar(this.lateralSpeed * (1 - latDamp)));
+
+      // Driving Assistance: Full Electronic Stability Assist
+      if (this.drivingAssistance === 'full' && Math.abs(this.lateralSpeed) > 1.2) {
+        const assistDamp = Math.min(0.6, dt * 5.0);
+        this.velocity.sub(rightVec.clone().multiplyScalar(this.lateralSpeed * assistDamp * 0.45));
+      }
 
       // Rolling air drag & rolling resistance (with aerodynamic downforce)
       const downforceFactor = this.handling.downforce || 1.0;
@@ -303,18 +323,105 @@ export class VehiclePhysics {
       this.isGrounded = false;
     }
 
-    // 7. World obstacle collisions
+    // 7. World obstacle & AI vehicle collisions
+    this.isColliding = false;
     if (collisionSystem) {
-      const hit = collisionSystem.checkSphereCollision(this.position, 1.4);
+      const forward = this.getForwardVector();
+
+      // A. Static world obstacles (Buildings, Barriers, Blocks, Trees, Pylons, Rocks)
+      const hit = collisionSystem.checkVehicleObstacles
+        ? collisionSystem.checkVehicleObstacles(this.position, forward, 2.1, 0.95)
+        : collisionSystem.checkSphereCollision(this.position, 1.4);
+
       if (hit && hit.collided) {
-        this.position.addScaledVector(hit.normal, hit.penetration);
-        const impulse = this.velocity.dot(hit.normal);
-        if (impulse < 0) {
-          this.velocity.sub(hit.normal.clone().multiplyScalar(impulse * 1.4));
+        this.isColliding = true;
+
+        // Position correction: push horizontally along normal to resolve penetration
+        const pen = Math.min(hit.penetration, 0.45);
+        this.position.x += hit.normal.x * pen;
+        this.position.z += hit.normal.z * pen;
+
+        // Velocity decomposition: normal vs tangent
+        const vn = this.velocity.dot(hit.normal);
+        if (vn < 0) {
+          // Inelastic restitution (avoid bouncy explosions!)
+          const restitution = 0.18;
+          const vt = new THREE.Vector3().copy(this.velocity).addScaledVector(hit.normal, -vn);
+
+          // Tangential friction against obstacle surface
+          vt.multiplyScalar(0.72);
+
+          // Rebound velocity
+          const newVn = -vn * restitution;
+          this.velocity.copy(vt).addScaledVector(hit.normal, newVn);
+
+          // Substantial, reasonable speed reduction based on impact severity
+          const impactSpeed = Math.abs(vn);
+          const impactSeverity = Math.min(1.0, impactSpeed / 12.0);
+          const speedDamping = Math.max(0.2, 1.0 - impactSeverity * 0.65);
+          this.velocity.multiplyScalar(speedDamping);
+          this.forwardSpeed = this.velocity.dot(forward);
+
+          // Record collision for audio/visual shock
+          this.lastCollision = {
+            type: hit.type || 'obstacle',
+            severity: impactSeverity,
+            impactSpeed,
+            time: Date.now()
+          };
+
+          // Small suspension pitch shock
+          this.chassisPitch -= hit.normal.dot(forward) * 0.06 * impactSeverity;
+        }
+
+        // Anti-stuck logic: if stuck against an obstacle while trying to drive, help breakaway
+        if (Math.abs(this.speedKmh) < 1.5 && (inputs.throttle > 0.2 || inputs.brake > 0.2)) {
+          this.stuckTimer += dt;
+          if (this.stuckTimer > 1.2) {
+            // Apply subtle separation nudge away from wall
+            this.position.x += hit.normal.x * 0.08;
+            this.position.z += hit.normal.z * 0.08;
+          }
+        } else {
+          this.stuckTimer = 0;
+        }
+      } else {
+        this.stuckTimer = 0;
+      }
+
+      // B. Dynamic AI Traffic Vehicles Collision
+      if (collisionSystem.checkAIVehicles && trafficCars && trafficCars.length > 0) {
+        const aiHit = collisionSystem.checkAIVehicles(this.position, this.velocity, this.heading, 4.4, 1.9, trafficCars);
+        if (aiHit && aiHit.collided) {
+          this.isColliding = true;
+
+          // Symmetrical pushback
+          this.position.x += aiHit.normal.x * (aiHit.penetration * 0.55);
+          this.position.z += aiHit.normal.z * (aiHit.penetration * 0.55);
+
+          if (aiHit.aiCar && aiHit.aiCar.position) {
+            aiHit.aiCar.position.x -= aiHit.normal.x * (aiHit.penetration * 0.45);
+            aiHit.aiCar.position.z -= aiHit.normal.z * (aiHit.penetration * 0.45);
+            // Apply impact deceleration & emergency braking to AI vehicle
+            aiHit.aiCar.speed = Math.max(0, aiHit.aiCar.speed * 0.4);
+            aiHit.aiCar.isBraking = true;
+          }
+
+          // Velocity reduction on player vehicle
+          const impactSeverity = Math.min(1.0, (aiHit.relSpeed || 10) / 16.0);
+          this.velocity.multiplyScalar(Math.max(0.25, 1.0 - impactSeverity * 0.55));
+          this.forwardSpeed = this.velocity.dot(forward);
+
+          this.lastCollision = {
+            type: 'vehicle',
+            severity: impactSeverity,
+            impactSpeed: aiHit.relSpeed || 10,
+            time: Date.now()
+          };
         }
       }
 
-      // Check dynamic boxes
+      // C. Dynamic Playground Boxes
       collisionSystem.hitDynamicBoxes(this.position, this.velocity, 1.8);
     }
 
@@ -457,18 +564,21 @@ export class VehiclePhysics {
     return false;
   }
 
+  setDrivingAssistance(mode) {
+    if (['off', 'tcs', 'full'].includes(mode)) {
+      this.drivingAssistance = mode;
+      return true;
+    }
+    return false;
+  }
+
   toggleSportMode() {
     this.isSportMode = !this.isSportMode;
     return this.isSportMode;
   }
 
   resetUpright() {
-    this.velocity.set(0, 0, 0);
-    this.position.y = Math.max(0.6, this.position.y + 0.6);
-    this.chassisPitch = 0;
-    this.chassisRoll = 0;
-    this.steerAngle = 0;
-    return true;
+    return this.resetToRoad(new THREE.Vector3(this.position.x, Math.max(0.45, this.position.y), this.position.z), this.heading);
   }
 
   getForwardVector() {
@@ -479,14 +589,47 @@ export class VehiclePhysics {
     return new THREE.Vector3(Math.cos(this.heading), 0, -Math.sin(this.heading));
   }
 
-  resetPosition(x = 0, y = 0.5, z = 0, heading = 0) {
-    this.position.set(x, y, z);
+  resetToRoad(roadPos, roadHeading = 0) {
+    if (roadPos) {
+      this.position.set(roadPos.x, roadPos.y !== undefined ? roadPos.y : 0.45, roadPos.z);
+    }
     this.velocity.set(0, 0, 0);
-    this.heading = heading;
-    this.steerAngle = 0;
-    this.currentGear = 3; // Reset to 1st gear ('1')
-    this.rpm = this.idleRpm;
+    this.acceleration.set(0, 0, 0);
+    this.forwardSpeed = 0;
+    this.lateralSpeed = 0;
+    this.speed = 0;
+    this.speedKmh = 0;
+    this.slipRatio = 0;
+    this.isDrifting = false;
+    this.airTime = 0;
+    this.isGrounded = true;
+
+    // Correct rotation to upright and aligned with road direction
+    this.heading = roadHeading;
+    this.pitch = 0;
+    this.roll = 0;
     this.chassisPitch = 0;
     this.chassisRoll = 0;
+    this.steerAngle = 0;
+    this.rotation.set(0, this.heading, 0);
+    this.quaternion.setFromAxisAngle(this._up, this.heading);
+
+    // Reset transmission & propulsion states
+    this.currentGear = 3; // 1st gear ('1')
+    this.rpm = this.idleRpm;
+    this.braking = 0;
+    this.handbrakeActive = false;
+    this.rearTraction = 1.0;
+    this.frontTraction = 1.0;
+
+    // Clear collision and stuck flags
+    this.isColliding = false;
+    this.lastCollision = null;
+    this.stuckTimer = 0;
+    return true;
+  }
+
+  resetPosition(x = 0, y = 0.5, z = 0, heading = 0) {
+    return this.resetToRoad(new THREE.Vector3(x, y, z), heading);
   }
 }

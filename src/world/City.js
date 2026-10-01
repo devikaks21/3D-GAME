@@ -170,6 +170,9 @@ export class City {
     foliage.position.set(x, 4.0, z);
 
     this.group.add(trunk, foliage);
+    if (this.collisionSystem) {
+      this.collisionSystem.addCollider(trunk, 'tree');
+    }
   }
 
   addIntersectionFeatures(x, z) {
@@ -190,6 +193,9 @@ export class City {
       pole.add(glow);
 
       this.group.add(pole);
+      if (this.collisionSystem) {
+        this.collisionSystem.addCollider(pole, 'obstacle');
+      }
     });
 
     // Traffic Signal Post
@@ -198,6 +204,9 @@ export class City {
       new THREE.MeshStandardMaterial({ color: 0x1c1e22 })
     );
     tlPost.position.set(x + 10, 3, z + 10);
+    if (this.collisionSystem) {
+      this.collisionSystem.addCollider(tlPost, 'obstacle');
+    }
 
     const tlBox = new THREE.Mesh(new THREE.BoxGeometry(0.4, 1.3, 0.4), new THREE.MeshStandardMaterial({ color: 0x0a0b0d }));
     tlBox.position.set(0, 2.2, 0);

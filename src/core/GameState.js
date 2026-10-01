@@ -14,8 +14,10 @@ export const GameStates = {
 export const GameModes = {
   FREE_DRIVE: 'FREE_DRIVE',
   DRIVING_SCHOOL: 'DRIVING_SCHOOL',
+  PRACTICE: 'PRACTICE',
   ROAD_TEST: 'ROAD_TEST',
   COURSE_TEST: 'COURSE_TEST',
+  PARKING_TEST: 'PARKING_TEST',
   RACING_TRACK: 'RACING_TRACK',
   CAR_PLAYGROUND: 'CAR_PLAYGROUND'
 };
@@ -33,6 +35,8 @@ export class GameState {
 
     this.drivingSchoolCompleted = 0;
     this.roadTestPassed = false;
+    this.parkingTestPassed = false;
+    this.practiceSkillsMastered = [];
     this.bestLapTime = null;
     this.playgroundHighCombo = 0;
 
@@ -46,7 +50,8 @@ export class GameState {
       transmission: 'auto', // 'auto' | 'manual'
       cameraView: 'chase',
       speedUnit: 'KM/H', // 'KM/H' | 'MPH'
-      timeOfDay: 'day' // 'day', 'sunset', 'night'
+      timeOfDay: 'day', // 'day', 'sunset', 'night'
+      trafficDensity: 'medium' // 'low', 'medium', 'high'
     };
 
     this.listeners = new Map();

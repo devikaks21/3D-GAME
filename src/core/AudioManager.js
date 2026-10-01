@@ -13,6 +13,7 @@ export class AudioManager {
     this.engineGain = null;
     this.sfxGain = null;
     this.ambientGain = null;
+    this.uiGain = null;
 
     // Engine synth nodes
     this.engineOsc1 = null;
@@ -62,6 +63,10 @@ export class AudioManager {
       this.ambientGain = this.ctx.createGain();
       this.ambientGain.gain.setValueAtTime(0.2, this.ctx.currentTime);
       this.ambientGain.connect(this.masterGain);
+
+      this.uiGain = this.ctx.createGain();
+      this.uiGain.gain.setValueAtTime(0.85, this.ctx.currentTime);
+      this.uiGain.connect(this.masterGain);
 
       this.setupEngineSynth();
       this.setupTireScreech();
@@ -474,8 +479,198 @@ export class AudioManager {
     osc.stop(now + 0.08);
   }
 
+  playDoorOpen() {
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    try {
+      // 1. Mechanical latch release click
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(1400, now);
+      osc.frequency.exponentialRampToValueAtTime(320, now + 0.08);
+      gain.gain.setValueAtTime(0.18, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+      osc.connect(gain);
+      gain.connect(this.sfxGain);
+      osc.start(now);
+      osc.stop(now + 0.08);
+
+      // 2. Subtle pneumatic seal pressure pop
+      const popOsc = this.ctx.createOscillator();
+      const popGain = this.ctx.createGain();
+      popOsc.type = 'sine';
+      popOsc.frequency.setValueAtTime(320, now + 0.015);
+      popOsc.frequency.exponentialRampToValueAtTime(110, now + 0.11);
+      popGain.gain.setValueAtTime(0.12, now + 0.015);
+      popGain.gain.exponentialRampToValueAtTime(0.001, now + 0.11);
+      popOsc.connect(popGain);
+      popGain.connect(this.sfxGain);
+      popOsc.start(now + 0.015);
+      popOsc.stop(now + 0.11);
+    } catch (e) {}
+  }
+
+  playDoorClose() {
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    try {
+      // 1. Deep solid automotive door frame thud
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(145, now);
+      osc.frequency.exponentialRampToValueAtTime(38, now + 0.16);
+      gain.gain.setValueAtTime(0.38, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
+      osc.connect(gain);
+      gain.connect(this.sfxGain);
+      osc.start(now);
+      osc.stop(now + 0.16);
+
+      // 2. Sharp metallic striker latch click
+      const clickOsc = this.ctx.createOscillator();
+      const clickGain = this.ctx.createGain();
+      clickOsc.type = 'triangle';
+      clickOsc.frequency.setValueAtTime(1800, now + 0.035);
+      clickOsc.frequency.exponentialRampToValueAtTime(450, now + 0.10);
+      clickGain.gain.setValueAtTime(0.24, now + 0.035);
+      clickGain.gain.exponentialRampToValueAtTime(0.001, now + 0.10);
+      clickOsc.connect(clickGain);
+      clickGain.connect(this.sfxGain);
+      clickOsc.start(now + 0.035);
+      clickOsc.stop(now + 0.10);
+    } catch (e) {}
+  }
+
+  playBootOpen() {
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    try {
+      // 1. Boot latch release click
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(1100, now);
+      osc.frequency.exponentialRampToValueAtTime(280, now + 0.09);
+      gain.gain.setValueAtTime(0.20, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
+      osc.connect(gain);
+      gain.connect(this.sfxGain);
+      osc.start(now);
+      osc.stop(now + 0.09);
+
+      // 2. Pneumatic gas strut expansion hiss
+      const strutOsc = this.ctx.createOscillator();
+      const strutGain = this.ctx.createGain();
+      strutOsc.type = 'sine';
+      strutOsc.frequency.setValueAtTime(260, now + 0.02);
+      strutOsc.frequency.exponentialRampToValueAtTime(90, now + 0.18);
+      strutGain.gain.setValueAtTime(0.14, now + 0.02);
+      strutGain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+      strutOsc.connect(strutGain);
+      strutGain.connect(this.sfxGain);
+      strutOsc.start(now + 0.02);
+      strutOsc.stop(now + 0.18);
+    } catch (e) {}
+  }
+
+  playBootClose() {
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    try {
+      // 1. Heavy boot lid acoustic slam
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(135, now);
+      osc.frequency.exponentialRampToValueAtTime(32, now + 0.18);
+      gain.gain.setValueAtTime(0.42, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+      osc.connect(gain);
+      gain.connect(this.sfxGain);
+      osc.start(now);
+      osc.stop(now + 0.18);
+
+      // 2. Metallic latch striker lock click
+      const clickOsc = this.ctx.createOscillator();
+      const clickGain = this.ctx.createGain();
+      clickOsc.type = 'triangle';
+      clickOsc.frequency.setValueAtTime(1600, now + 0.03);
+      clickOsc.frequency.exponentialRampToValueAtTime(380, now + 0.10);
+      clickGain.gain.setValueAtTime(0.26, now + 0.03);
+      clickGain.gain.exponentialRampToValueAtTime(0.001, now + 0.10);
+      clickOsc.connect(clickGain);
+      clickGain.connect(this.sfxGain);
+      clickOsc.start(now + 0.03);
+      clickOsc.stop(now + 0.10);
+    } catch (e) {}
+  }
+
+  playRoofMotor() {
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    try {
+      // Electro-hydraulic convertible roof actuator motor whine
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(210, now);
+      osc.frequency.linearRampToValueAtTime(260, now + 0.15);
+      osc.frequency.linearRampToValueAtTime(190, now + 0.35);
+
+      const filter = this.ctx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(450, now);
+
+      gain.gain.setValueAtTime(0.08, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+
+      osc.connect(filter);
+      filter.connect(gain);
+      gain.connect(this.sfxGain);
+
+      osc.start(now);
+      osc.stop(now + 0.35);
+    } catch (e) {}
+  }
+
   setAmbientShowroom(active) {
     if (!this.ambientGain) return;
     this.ambientGain.gain.setTargetAtTime(active ? 0.25 : 0.0, this.ctx ? this.ctx.currentTime : 0, 0.3);
+  }
+
+  setMasterVolume(percent) {
+    const val = Math.max(0, Math.min(100, Number(percent) || 0)) / 100;
+    if (this.masterGain && this.ctx) {
+      this.masterGain.gain.setValueAtTime(val, this.ctx.currentTime);
+    }
+  }
+
+  setEngineVolume(percent) {
+    const val = Math.max(0, Math.min(100, Number(percent) || 0)) / 100;
+    if (this.engineGain && this.ctx) {
+      this.engineGain.gain.setValueAtTime(val * 0.5, this.ctx.currentTime);
+    }
+  }
+
+  setEnvironmentVolume(percent) {
+    const val = Math.max(0, Math.min(100, Number(percent) || 0)) / 100;
+    if (this.ambientGain && this.ctx) {
+      this.ambientGain.gain.setValueAtTime(val * 0.3, this.ctx.currentTime);
+    }
+    if (this.windGain && this.ctx) {
+      this.windGain.gain.setValueAtTime(val * 0.25, this.ctx.currentTime);
+    }
+  }
+
+  setUIVolume(percent) {
+    const val = Math.max(0, Math.min(100, Number(percent) || 0)) / 100;
+    if (this.uiGain && this.ctx) {
+      this.uiGain.gain.setValueAtTime(val * 0.85, this.ctx.currentTime);
+    }
+    if (this.sfxGain && this.ctx) {
+      this.sfxGain.gain.setValueAtTime(val * 0.7, this.ctx.currentTime);
+    }
   }
 }

@@ -1,3 +1,4 @@
+import * as THREE from 'three';
 import { Vehicle } from './Vehicle.js';
 import { VehiclePhysics } from './VehiclePhysics.js';
 import { VehicleController } from './VehicleController.js';
@@ -855,9 +856,9 @@ export class VehicleManager {
     };
   }
 
-  update(dt, collisionSystem) {
+  update(dt, collisionSystem, trafficCars = []) {
     if (this.currentController) {
-      this.currentController.update(dt, collisionSystem);
+      this.currentController.update(dt, collisionSystem, trafficCars);
     }
   }
 
@@ -875,5 +876,39 @@ export class VehicleManager {
 
   getCatalogEntry(vehicleId) {
     return VEHICLE_CATALOG.find(v => v.id === vehicleId);
+  }
+
+  resetActiveVehicle(roadNetwork = null, collisionSystem = null) {
+    if (!this.currentPhysics) return null;
+
+    let targetPos = new THREE.Vector3().copy(this.currentPhysics.position);
+    let targetHeading = this.currentPhysics.heading;
+
+    // 1. If roadNetwork is available, find nearest safe road position
+    if (roadNetwork && typeof roadNetwork.getNearestSafeRoadPosition === 'function') {
+      const roadInfo = roadNetwork.getNearestSafeRoadPosition(targetPos, collisionSystem);
+      if (roadInfo && roadInfo.position) {
+        targetPos = roadInfo.position;
+        targetHeading = roadInfo.heading !== undefined ? roadInfo.heading : targetHeading;
+      }
+    } else if (collisionSystem && typeof collisionSystem.findSafeClearance === 'function') {
+      // 2. Fallback to collisionSystem clearance search
+      targetPos = collisionSystem.findSafeClearance(targetPos, targetHeading, 4.5);
+    } else {
+      // 3. Simple upright safety ground lift
+      targetPos.y = Math.max(0.45, targetPos.y);
+    }
+
+    this.currentPhysics.resetToRoad(targetPos, targetHeading);
+
+    if (this.currentVehicle && typeof this.currentVehicle.update === 'function') {
+      this.currentVehicle.update(this.currentPhysics, 0.016);
+    }
+
+    return {
+      success: true,
+      position: targetPos,
+      heading: targetHeading
+    };
   }
 }

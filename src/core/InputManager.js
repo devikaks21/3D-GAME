@@ -93,18 +93,6 @@ export const DEFAULT_KEY_BINDINGS = {
     desc: 'Turn indicator right',
     keys: ['KeyK']
   },
-  hazard: {
-    id: 'hazard',
-    label: 'Hazard Lights',
-    desc: 'Emergency 4-way hazard blinkers',
-    keys: ['KeyH']
-  },
-  indicatorsOff: {
-    id: 'indicatorsOff',
-    label: 'Indicators Off',
-    desc: 'Turn off all indicators and hazard lights',
-    keys: ['KeyJ']
-  },
   wipers: {
     id: 'wipers',
     label: 'Wipers',
@@ -330,20 +318,8 @@ export class InputManager {
     }
 
     // 4. Right Indicator: K (or E as secondary)
-    if ((this.bindings.rightIndicator && this.bindings.rightIndicator.keys.includes(code)) || code === 'KeyE') {
+    if (this.bindings.rightIndicator.keys.includes(code) || code === 'KeyE') {
       this.triggerAction('toggleRightIndicator');
-      return;
-    }
-
-    // Hazard Flashers: H
-    if (this.bindings.hazard && this.bindings.hazard.keys.includes(code)) {
-      this.triggerAction('toggleHazard');
-      return;
-    }
-
-    // Indicators Off: J
-    if (this.bindings.indicatorsOff && this.bindings.indicatorsOff.keys.includes(code)) {
-      this.triggerAction('indicatorsOff');
       return;
     }
 
@@ -386,7 +362,6 @@ export class InputManager {
     // 11. Menu: ESC
     if (this.bindings.menu.keys.includes(code)) {
       this.triggerAction('menu');
-      this.triggerAction('pause');
       return;
     }
 
@@ -396,10 +371,13 @@ export class InputManager {
         this.triggerAction('toggleHazard');
         break;
       case 'KeyJ':
-        this.triggerAction('indicatorsOff');
+        this.triggerAction('indicatorOff');
         break;
       case 'KeyT':
         this.triggerAction('toggleRoof');
+        break;
+      case 'KeyU':
+        this.triggerAction('toggleBoot');
         break;
       case 'KeyO':
         this.triggerAction('toggleDoors');
@@ -412,6 +390,21 @@ export class InputManager {
         break;
       case 'KeyF':
         this.triggerAction('refuel');
+        break;
+      case 'Digit1':
+        this.triggerAction('camera1');
+        break;
+      case 'Digit2':
+        this.triggerAction('camera2');
+        break;
+      case 'Digit3':
+        this.triggerAction('camera3');
+        break;
+      case 'Digit4':
+        this.triggerAction('camera4');
+        break;
+      case 'Digit5':
+        this.triggerAction('camera5');
         break;
     }
   }

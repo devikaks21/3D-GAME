@@ -292,7 +292,15 @@ export class MobileControls {
     if (cameraMode) {
       const camLabel = this.root.querySelector('#touch-cam-label');
       if (camLabel) {
-        camLabel.textContent = cameraMode.toUpperCase();
+        const shortCam = {
+          chase: 'CHASE',
+          close_chase: 'CLOSE',
+          cockpit: 'COCKPIT',
+          rear: 'REAR',
+          free: 'FREE',
+          orbit: 'FREE'
+        }[cameraMode] || cameraMode.toUpperCase();
+        camLabel.textContent = shortCam;
       }
     }
   }
